@@ -1,0 +1,12 @@
+[package]
+name = "bitvmx-job-dispatcher"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitvmx-broker = { path = "../rust-bitvmx-broker" }
+tracing = "0.1.26"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde_json = "1.0.64"
+ctrlc = "3.2.0"
+anyhow = "1.0.95"
