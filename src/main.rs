@@ -6,6 +6,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -58,25 +59,12 @@ fn init_trace() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn main() -> Result<(), anyhow::Error> {
-    init_trace()?;
-
-    info!("Starting...");
-
-    let config = BrokerConfig::new(10000, Some(IpAddr::from([127, 0, 0, 1])));
-    let channel = DualChannel::new(&config, 10);
-    let check_interval = std::time::Duration::from_secs(1);
-
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
-
+fn dispatcher_loop(
+    channel: DualChannel,
+    check_interval: Duration,
+    running: Arc<AtomicBool>,
+) -> Result<(), anyhow::Error> {
     let mut workers: Vec<(Child, BufReader<std::process::ChildStdout>, u32)> = Vec::new();
-
     while running.load(Ordering::SeqCst) {
         let msg = channel.recv();
         match msg {
@@ -121,6 +109,28 @@ fn main() -> Result<(), anyhow::Error> {
 
         std::thread::sleep(check_interval);
     }
+    Ok(())
+}
+
+fn main() -> Result<(), anyhow::Error> {
+    init_trace()?;
+
+    info!("Starting...");
+
+    let config = BrokerConfig::new(10000, Some(IpAddr::from([127, 0, 0, 1])));
+    let channel = DualChannel::new(&config, 10);
+    let check_interval = std::time::Duration::from_secs(1);
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    dispatcher_loop(channel, check_interval, running)?;
+
     info!("Shutting down...");
 
     Ok(())
