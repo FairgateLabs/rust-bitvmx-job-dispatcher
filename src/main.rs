@@ -11,52 +11,33 @@ use std::{
 
 use anyhow::Result;
 use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
-//use bitvmx_workers_messages::EmulatorExecute;
+use bitvmx_job_dispatcher::emulator_messages::EmulatorDispatcher;
 use tracing::{error, info};
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
-pub fn process_msg(msg: &str) -> Option<(Child, BufReader<std::process::ChildStdout>)> {
-    //let msg: EmulatorExecute = serde_json::from_str(msg).unwrap();
+pub fn process_msg(
+    emulator_dispatcher: &mut EmulatorDispatcher,
+    msg: &str,
+) -> Option<(Child, BufReader<std::process::ChildStdout>, String)> {
     info!("Received: {:?}", msg);
 
-    let mut child = Command::new("../BitVMX-CPU/target/release/emulator")
-        //.stdin(Stdio::piped())
-        .args([
-            "execute",
-            "--elf",
-            "../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.elf",
-            "--debug",
-            "--limit",
-            "20",
-        ])
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to start worker");
+    let (cmd, args, job_id) = emulator_dispatcher.process_msg(msg).ok()?;
 
-    // If necessary to send through stdin
-    /*if let Some(mut stdin) = child.stdin.take() {
-        writeln!(stdin, "{}", task).expect("Failed to write to worker");
-    }*/
+    let child = Command::new(cmd).args(args).stdout(Stdio::piped()).spawn();
+
+    if let Err(e) = child {
+        error!("Error executing command: {}", e);
+        emulator_dispatcher.discard_job(&job_id);
+        return None;
+    }
+    let mut child = child.unwrap();
 
     let stdout = child.stdout.take().expect("Failed to capture stdout");
     let reader = BufReader::new(stdout);
 
-    Some((child, reader))
-}
-
-fn init_trace() -> Result<(), anyhow::Error> {
-    let filter = EnvFilter::builder()
-        .parse("info,tarpc=off") // Include everything at "info" except `libp2p`
-        .expect("Invalid filter");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-        .try_init()?;
-
-    Ok(())
+    Some((child, reader, job_id))
 }
 
 fn dispatcher_loop(
@@ -64,14 +45,20 @@ fn dispatcher_loop(
     check_interval: Duration,
     running: Arc<AtomicBool>,
 ) -> Result<(), anyhow::Error> {
-    let mut workers: Vec<(Child, BufReader<std::process::ChildStdout>, u32)> = Vec::new();
+    let mut workers: Vec<(Child, BufReader<std::process::ChildStdout>, u32, String)> = Vec::new();
+    let mut emulator_dispatcher = EmulatorDispatcher::new();
+
     while running.load(Ordering::SeqCst) {
         let msg = channel.recv();
         match msg {
             Ok(msg) => {
                 if let Some(msg) = msg {
-                    if let Some((child, reader)) = process_msg(&msg.0) {
-                        workers.push((child, reader, msg.1));
+                    if let Some((child, reader, context)) =
+                        process_msg(&mut emulator_dispatcher, &msg.0)
+                    {
+                        workers.push((child, reader, msg.1, context));
+                    } else {
+                        error!("Error processing message: {:?}", msg);
                     }
                 }
             }
@@ -79,23 +66,24 @@ fn dispatcher_loop(
         }
 
         if !workers.is_empty() {
-            workers.retain_mut(|(child, reader, id)| {
+            workers.retain_mut(|(child, reader, id, context)| {
                 match child.try_wait() {
                     Ok(Some(status)) => {
                         let mut buf = String::new();
                         let _ = reader.read_to_string(&mut buf);
-                        //TODO: process message before sending out
+
                         info!("Worker output: {}", buf);
                         info!("Worker exited with status: {:?}", status);
-                        channel
-                            .send(
-                                *id,
-                                format!("Worker exited with status: {}\nResult: {}", status, buf),
-                            )
-                            .unwrap();
+
+                        if let Some(result) =
+                            emulator_dispatcher.process_result(&context, buf, status)
+                        {
+                            channel.send(*id, result).unwrap();
+                        }
+
                         false // Remove from the list
                     }
-                    Ok(None) => true, // Still running keep it
+                    Ok(None) => true, // Still running keep it  //TODO: Tick the dispatcher for timeout handling?
                     Err(e) => {
                         error!("Error checking worker: {}", e);
                         channel
@@ -112,6 +100,18 @@ fn dispatcher_loop(
     Ok(())
 }
 
+fn init_trace() -> Result<(), anyhow::Error> {
+    let filter = EnvFilter::builder()
+        .parse("info,tarpc=off") // Include everything at "info" except `libp2p`
+        .expect("Invalid filter");
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
+        .try_init()?;
+
+    Ok(())
+}
 fn main() -> Result<(), anyhow::Error> {
     init_trace()?;
 
