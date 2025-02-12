@@ -1,25 +1,17 @@
 use std::{collections::HashMap, process::ExitStatus};
 
-use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use crate::errors::JobDispatcherError;
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EmulatorJob {
-    pub job_id: String,
-    pub job_type: EmulatorJobType,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum EmulatorJobType {
-    Execute(String), // elf path
-}
+use crate::{
+    errors::EmulatorError,
+    messages::{EmulatorJob, EmulatorJobType},
+};
 
 pub struct EmulatorDispatcher {
     jobs: HashMap<String, EmulatorJobType>,
 }
 
+//TODO: This part might be generalized
 impl EmulatorDispatcher {
     pub fn new() -> Self {
         Self {
@@ -30,13 +22,13 @@ impl EmulatorDispatcher {
     pub fn process_msg(
         &mut self,
         msg: &str,
-    ) -> Result<(String, Vec<String>, String), JobDispatcherError> {
+    ) -> Result<(String, Vec<String>, String), EmulatorError> {
         let msg: EmulatorJob = serde_json::from_str(msg)?;
 
         //chec if id is already in jobs
         if self.jobs.contains_key(&msg.job_id) {
             error!("Job id already exists: {}", msg.job_id);
-            return Err(JobDispatcherError::JobIdAlreadyExists);
+            return Err(EmulatorError::JobIdAlreadyExists);
         }
 
         let (cmd, args) = match &msg.job_type {

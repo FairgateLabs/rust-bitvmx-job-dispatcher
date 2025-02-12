@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::Result;
 use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
-use bitvmx_job_dispatcher::emulator_messages::EmulatorDispatcher;
+use bitvmx_emulator_job::handler::EmulatorDispatcher;
 use tracing::{error, info};
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
