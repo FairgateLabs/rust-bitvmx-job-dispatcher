@@ -6,7 +6,7 @@ use bitvmx_emulator_job::messages::{EmulatorJob, EmulatorJobType};
 
 // To make this example work, you need to:
 // 1. go to ../BitVMX-CPU and run cargo build --release
-// 2. run the server example first.
+// 2. run the server example first (from bitvmx-broker).
 //      cargo run --release --example server -- --port 10000
 // 3. Then run the job-dispatcher
 //      cargo run --release
