@@ -11,14 +11,15 @@ use std::{
 
 use anyhow::Result;
 use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
-use bitvmx_emulator_job::handler::EmulatorDispatcher;
+// use bitvmx_emulator_job::handler::EmulatorDispatcher;
+use bitvmx_prover_job::handler::ProverDispatcher;
 use tracing::{error, info};
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
 pub fn process_msg(
-    emulator_dispatcher: &mut EmulatorDispatcher,
+    emulator_dispatcher: &mut ProverDispatcher,
     msg: &str,
 ) -> Option<(Child, BufReader<std::process::ChildStdout>, String)> {
     info!("Received: {:?}", msg);
@@ -46,7 +47,7 @@ fn dispatcher_loop(
     running: Arc<AtomicBool>,
 ) -> Result<(), anyhow::Error> {
     let mut workers: Vec<(Child, BufReader<std::process::ChildStdout>, u32, String)> = Vec::new();
-    let mut emulator_dispatcher = EmulatorDispatcher::new();
+    let mut dispatcher = ProverDispatcher::new();
 
     while running.load(Ordering::SeqCst) {
         let msg = channel.recv();
@@ -54,7 +55,7 @@ fn dispatcher_loop(
             Ok(msg) => {
                 if let Some(msg) = msg {
                     if let Some((child, reader, context)) =
-                        process_msg(&mut emulator_dispatcher, &msg.0)
+                        process_msg(&mut dispatcher, &msg.0)
                     {
                         workers.push((child, reader, msg.1, context));
                     } else {
@@ -76,7 +77,7 @@ fn dispatcher_loop(
                         info!("Worker exited with status: {:?}", status);
 
                         if let Some(result) =
-                            emulator_dispatcher.process_result(&context, buf, status)
+                            dispatcher.process_result(&context, buf, status)
                         {
                             channel.send(*id, result).unwrap();
                         }

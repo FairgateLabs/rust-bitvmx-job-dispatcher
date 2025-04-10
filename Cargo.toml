@@ -13,7 +13,7 @@ anyhow = "1.0.95"
 serde = { version = "1.0.130", features = ["derive"] }
 thiserror = "2.0.11"
 bitvmx-emulator-job = { path = "./emulator", features = ["handler"] }
-
+bitvmx-prover-job = { path = "./prover"}
 
 [features]
 default = ["emulator"]
@@ -21,4 +21,4 @@ emulator = []
 
 
 [workspace]
-members = ["emulator"]
+members = ["emulator", "prover"]
