@@ -9,11 +9,13 @@ pub struct ProverJob {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProverJobType {
     ProveStark(String), // output binary file path
+    ProveSnark(String, String), // input binary file path, output json file path
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProverResultType {
-    ProveStark(String), //
+    ProveStark(String),
+    ProveSnark(String)
 }
 
 #[derive(Debug, Serialize, Deserialize)]

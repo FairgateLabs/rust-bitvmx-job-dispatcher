@@ -43,6 +43,17 @@ impl ProverDispatcher {
                 ];
                 (cmd, args)
             }
+            ProverJobType::ProveSnark(input_file, output_file) => {
+                let cmd = "../rust-bitvmx-zk-proof/target/release/host";
+                let args = vec![
+                    "prove-snark".to_string(),
+                    "--input".to_string(),
+                    input_file.clone(),
+                    "--output".to_string(),
+                    output_file.clone(),
+                ];
+                (cmd, args)
+            }
         };
 
         self.jobs.insert(msg.job_id.clone(), msg.job_type);
@@ -61,8 +72,9 @@ impl ProverDispatcher {
         status: ExitStatus,
     ) -> Option<String> {
         if let Some(msg_type) = self.jobs.get(id) {
+            println!("Processing result for job id: {}", id);
             match msg_type {
-                ProverJobType::ProveStark(_) => {
+                _ => {
                     self.jobs.remove(id);
 
                     //TODO: Parse result if necessary

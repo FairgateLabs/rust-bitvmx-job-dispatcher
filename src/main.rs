@@ -19,18 +19,18 @@ use tracing_subscriber::{
 };
 
 pub fn process_msg(
-    emulator_dispatcher: &mut ProverDispatcher,
+    dispatcher: &mut ProverDispatcher,
     msg: &str,
 ) -> Option<(Child, BufReader<std::process::ChildStdout>, String)> {
     info!("Received: {:?}", msg);
 
-    let (cmd, args, job_id) = emulator_dispatcher.process_msg(msg).ok()?;
+    let (cmd, args, job_id) = dispatcher.process_msg(msg).ok()?;
 
     let child = Command::new(cmd).args(args).stdout(Stdio::piped()).spawn();
 
     if let Err(e) = child {
         error!("Error executing command: {}", e);
-        emulator_dispatcher.discard_job(&job_id);
+        dispatcher.discard_job(&job_id);
         return None;
     }
     let mut child = child.unwrap();
