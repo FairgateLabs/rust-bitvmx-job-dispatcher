@@ -1,7 +1,6 @@
 #[cfg(feature = "prover")]
 mod prover{
     use std::{thread::sleep, time::Duration};
-
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_job_dispatcher::{
