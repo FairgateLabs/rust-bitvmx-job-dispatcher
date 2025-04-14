@@ -12,6 +12,4 @@ tracing = "0.1.26"
 [dev-dependencies]
 anyhow = "1.0.95"
 bitvmx-broker = { path = "../../rust-bitvmx-broker" }
-
-[features]
-handler = []
+dispatcher = {path = "../dispatcher"}

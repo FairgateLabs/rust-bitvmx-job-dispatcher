@@ -1,28 +1,9 @@
 use std::{collections::HashMap, process::ExitStatus};
 
-use errors::JobDispatcherError;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::de::DeserializeOwned;
 use tracing::error;
 
-pub mod errors;
-
-
-#[derive(Deserialize)]
-pub struct DispatcherJob<V> 
-where V: DispatcherMessage{
-    pub job_id: String,
-    pub job_type: V,
-}
-
-impl <V> DispatcherJob<V>
-where V: DispatcherMessage {
-    pub fn job_id(&self) -> &String {
-        &self.job_id
-    }
-    pub fn job_type(&self) -> &V {
-        &self.job_type
-    }
-}
+use crate::{dispatcher_error::DispatcherError, dispatcher_job::DispatcherJob, dispatcher_message::DispatcherMessage};
 
 pub struct Dispatcher<V>
 where V: DeserializeOwned {
@@ -43,13 +24,12 @@ where
     pub fn process_msg(
         &mut self,
         msg: &str,
-    ) -> Result<(String, Vec<String>, String), JobDispatcherError> {
+    ) -> Result<(String, Vec<String>, String), DispatcherError> {
         let msg: DispatcherJob<V> = serde_json::from_str(msg)?;
 
-        //chec if id is already in jobs
         if self.jobs.contains_key(msg.job_id()) {
             error!("Job id already exists: {}", msg.job_id());
-            return Err(JobDispatcherError::JobIdAlreadyExists);
+            return Err(DispatcherError::JobIdAlreadyExists);
         }
 
         let (cmd, args) = msg.job_type.command();
@@ -83,6 +63,4 @@ where
 
 }
 
-pub trait DispatcherMessage {
-    fn command(&self) -> (String, Vec<String>);
-}
+

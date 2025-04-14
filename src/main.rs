@@ -10,18 +10,22 @@ use std::{
 };
 
 use anyhow::Result;
+#[cfg(feature = "prover")]
+use bitvmx_broker::prover::ProverJobType;
 use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
-// use bitvmx_emulator_job::handler::EmulatorDispatcher;
-use bitvmx_prover_job::handler::ProverDispatcher;
+use bitvmx_emulator_job::messages::EmulatorJobType;
+use job_dispatche::{dispatcher_message::DispatcherMessage, dispatcher_module::Dispatcher};
+use serde::de::DeserializeOwned;
 use tracing::{error, info};
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
-pub fn process_msg(
-    dispatcher: &mut ProverDispatcher,
+pub fn process_msg<V>(
+    dispatcher: &mut Dispatcher<V>,
     msg: &str,
-) -> Option<(Child, BufReader<std::process::ChildStdout>, String)> {
+) -> Option<(Child, BufReader<std::process::ChildStdout>, String)> 
+where V: DispatcherMessage + DeserializeOwned {
     info!("Received: {:?}", msg);
 
     let (cmd, args, job_id) = dispatcher.process_msg(msg).ok()?;
@@ -47,7 +51,11 @@ fn dispatcher_loop(
     running: Arc<AtomicBool>,
 ) -> Result<(), anyhow::Error> {
     let mut workers: Vec<(Child, BufReader<std::process::ChildStdout>, u32, String)> = Vec::new();
-    let mut dispatcher = ProverDispatcher::new();
+    #[cfg(not(feature = "prover"))]
+    let mut dispatcher: Dispatcher<EmulatorJobType> = Dispatcher::new();
+    #[cfg(feature = "prover")]
+    let mut dispatcher: Dispatcher<ProverJobType> =
+        Dispatcher::new();
 
     while running.load(Ordering::SeqCst) {
         let msg = channel.recv();
