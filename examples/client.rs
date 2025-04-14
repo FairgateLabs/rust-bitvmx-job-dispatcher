@@ -1,21 +1,27 @@
-use std::{thread::sleep, time::Duration};
+use tracing::error;
 
+#[cfg(feature = "emulator")]
+mod emulator {
+    
+use std::{thread::sleep, time::Duration};
 use bitvmx_broker::channel::channel::DualChannel;
 use bitvmx_broker::rpc::BrokerConfig;
-use bitvmx_emulator_job::messages::{EmulatorJob, EmulatorJobType};
+use bitvmx_job_dispatcher::{
+    dispatcher::dispatcher_job::DispatcherJob, message_type::emulator_messages::EmulatorJobType,
+};
 
 // To make this example work, you need to:
 // 1. go to ../BitVMX-CPU and run cargo build --release
-// 2. run the server example first.
+// 2. run the server example first (from bitvmx-broker).
 //      cargo run --release --example server -- --port 10000
 // 3. Then run the job-dispatcher
 //      cargo run --release
 // 4. Then trigger one execution
-//      cargo run --release --package bitvmx-emulator-job --example client
+//      cargo run --release --example client
 
-fn main() -> Result<(), anyhow::Error> {
+pub(crate) fn run_job() -> Result<(), anyhow::Error> {
     let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
-    let msg = serde_json::to_string(&EmulatorJob {
+    let msg = serde_json::to_string(&DispatcherJob {
         job_id: "uid_job".to_string(),
         job_type: EmulatorJobType::Execute(
             "../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.elf".to_string(),
@@ -35,3 +41,17 @@ fn main() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+}
+
+fn main() {
+    #[cfg(feature = "emulator")]
+    {
+        if let Err(e) = emulator::run_job() {
+            error!("Error: {}", e);
+        }
+    }
+
+    #[cfg(not(feature = "emulator"))]
+    println!("Run with '--features emulator' to run this example");
+}
+

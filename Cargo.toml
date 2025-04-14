@@ -12,14 +12,8 @@ ctrlc = "3.2.0"
 anyhow = "1.0.95"
 serde = { version = "1.0.130", features = ["derive"] }
 thiserror = "2.0.11"
-dispatcher = {path = "./dispatcher"} 
-bitvmx-emulator-job = { path = "./emulator", optional = true}
-bitvmx-prover-job = { path = "./prover", optional = true}
 
 [features]
-default = ["bitvmx-emulator-job"]
-#prover = ["bitvmx-prover-job"]
-
-
-[workspace]
-members = [ "dispatcher","emulator", "prover"]
+default = ["emulator"]
+emulator = []
+prover = []

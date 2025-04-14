@@ -1,4 +1,4 @@
-use dispatcher::dispatcher_message::DispatcherMessage;
+use crate::dispatcher::dispatcher_message::DispatcherMessage;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -6,7 +6,7 @@ pub enum EmulatorJobType {
     Execute(String), // elf path
 }
 
-impl DispatcherMessage for EmulatorJobType{
+impl DispatcherMessage for EmulatorJobType {
     fn command(&self) -> (String, Vec<String>) {
         match self {
             EmulatorJobType::Execute(elf) => {

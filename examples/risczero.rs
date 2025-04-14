@@ -1,26 +1,28 @@
+#[cfg(feature = "prover")]
+mod prover{
 use std::{thread::sleep, time::Duration};
 
 use bitvmx_broker::channel::channel::DualChannel;
 use bitvmx_broker::rpc::BrokerConfig;
-use bitvmx_prover_job::messages::{ProverJobType, ProverJob};
+use bitvmx_job_dispatcher::{
+    dispatcher::dispatcher_job::DispatcherJob, message_type::prover_messages::ProverJobType,
+};
 
 // To make this example work, you need to:
-// 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md 
+// 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
 //    until the step "Template Setup"
 // 3. run the server example first.
 //      cargo run --release --example server -- --port 10000
 // 4. Then run the job-dispatcher
-//      cargo run --release
+//      cargo run --release --features "prover"
 // 5. Then trigger one execution
-//      cargo run --release --package bitvmx-prover-job --example risczero
+//      cargo run --release --example risczero
 
 fn main() -> Result<(), anyhow::Error> {
     let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
-    let msg = serde_json::to_string(&ProverJob {
+    let msg = serde_json::to_string(&DispatcherJob {
         job_id: "uid_job".to_string(),
-        job_type: ProverJobType::ProveStark(
-            "./stark-proof.bin".to_string(),
-        ),
+        job_type: ProverJobType::ProveStark("./stark-proof.bin".to_string()),
     })?;
     channel.send(10, msg)?;
 
@@ -37,7 +39,7 @@ fn main() -> Result<(), anyhow::Error> {
         }
     }
     if stark_proved {
-        let msg = serde_json::to_string(&ProverJob {
+        let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job_2".to_string(),
             job_type: ProverJobType::ProveSnark(
                 "stark-proof.bin".to_string(),
@@ -60,4 +62,10 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     Ok(())
+}
+}
+
+#[cfg(not(feature = "prover"))]
+fn main() {
+    println!("Run with '--features prover' to run this example");
 }

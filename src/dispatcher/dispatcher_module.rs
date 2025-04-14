@@ -3,18 +3,22 @@ use std::{collections::HashMap, process::ExitStatus};
 use serde::de::DeserializeOwned;
 use tracing::error;
 
-use crate::{dispatcher_error::DispatcherError, dispatcher_job::DispatcherJob, dispatcher_message::DispatcherMessage};
+use crate::dispatcher::{
+    dispatcher_error::DispatcherError, dispatcher_job::DispatcherJob,
+    dispatcher_message::DispatcherMessage,
+};
 
 pub struct Dispatcher<V>
-where V: DeserializeOwned {
+where
+    V: DeserializeOwned,
+{
     jobs: HashMap<String, V>,
 }
 
 impl<V> Dispatcher<V>
 where
-    V: DispatcherMessage + DeserializeOwned
+    V: DispatcherMessage + DeserializeOwned,
 {
-
     pub fn new() -> Self {
         Self {
             jobs: HashMap::new(),
@@ -39,7 +43,6 @@ where
         Ok((cmd.to_string(), args, msg.job_id))
     }
 
-
     pub fn discard_job(&mut self, id: &str) {
         self.jobs.remove(id);
     }
@@ -60,7 +63,4 @@ where
             None
         }
     }
-
 }
-
-

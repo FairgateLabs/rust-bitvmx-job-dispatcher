@@ -10,11 +10,15 @@ use std::{
 };
 
 use anyhow::Result;
-#[cfg(feature = "prover")]
-use bitvmx_broker::prover::ProverJobType;
 use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
-use bitvmx_emulator_job::messages::EmulatorJobType;
-use job_dispatche::{dispatcher_message::DispatcherMessage, dispatcher_module::Dispatcher};
+
+use bitvmx_job_dispatcher::dispatcher::{
+    dispatcher_message::DispatcherMessage, dispatcher_module::Dispatcher,
+};
+#[cfg(feature = "emulator")]
+use bitvmx_job_dispatcher::message_type::emulator_messages::EmulatorJobType;
+#[cfg(feature = "prover")]
+use bitvmx_job_dispatcher::message_type::prover_messages::ProverJobType;
 use serde::de::DeserializeOwned;
 use tracing::{error, info};
 use tracing_subscriber::{
@@ -24,8 +28,10 @@ use tracing_subscriber::{
 pub fn process_msg<V>(
     dispatcher: &mut Dispatcher<V>,
     msg: &str,
-) -> Option<(Child, BufReader<std::process::ChildStdout>, String)> 
-where V: DispatcherMessage + DeserializeOwned {
+) -> Option<(Child, BufReader<std::process::ChildStdout>, String)>
+where
+    V: DispatcherMessage + DeserializeOwned,
+{
     info!("Received: {:?}", msg);
 
     let (cmd, args, job_id) = dispatcher.process_msg(msg).ok()?;
@@ -51,20 +57,17 @@ fn dispatcher_loop(
     running: Arc<AtomicBool>,
 ) -> Result<(), anyhow::Error> {
     let mut workers: Vec<(Child, BufReader<std::process::ChildStdout>, u32, String)> = Vec::new();
-    #[cfg(not(feature = "prover"))]
-    let mut dispatcher: Dispatcher<EmulatorJobType> = Dispatcher::new();
+    #[cfg(feature = "emulator")]
+    let mut dispatcher = Dispatcher::<EmulatorJobType>::new();
     #[cfg(feature = "prover")]
-    let mut dispatcher: Dispatcher<ProverJobType> =
-        Dispatcher::new();
+    let mut dispatcher = Dispatcher::<ProverJobType>::new();
 
     while running.load(Ordering::SeqCst) {
         let msg = channel.recv();
         match msg {
             Ok(msg) => {
                 if let Some(msg) = msg {
-                    if let Some((child, reader, context)) =
-                        process_msg(&mut dispatcher, &msg.0)
-                    {
+                    if let Some((child, reader, context)) = process_msg(&mut dispatcher, &msg.0) {
                         workers.push((child, reader, msg.1, context));
                     } else {
                         error!("Error processing message: {:?}", msg);
@@ -84,9 +87,7 @@ fn dispatcher_loop(
                         info!("Worker output: {}", buf);
                         info!("Worker exited with status: {:?}", status);
 
-                        if let Some(result) =
-                            dispatcher.process_result(&context, buf, status)
-                        {
+                        if let Some(result) = dispatcher.process_result(&context, buf, status) {
                             channel.send(*id, result).unwrap();
                         }
 
@@ -106,6 +107,7 @@ fn dispatcher_loop(
 
         std::thread::sleep(check_interval);
     }
+
     Ok(())
 }
 
