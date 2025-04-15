@@ -1,14 +1,14 @@
 use tracing::error;
 
 #[cfg(feature = "emulator")]
-    mod emulator {
-        
-    use std::{thread::sleep, time::Duration};
+mod emulator {
+
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_job_dispatcher::{
         dispatcher::dispatcher_job::DispatcherJob, message_type::emulator_messages::EmulatorJobType,
     };
+    use std::{thread::sleep, time::Duration};
 
     // To make this example work, you need to:
     // 1. go to ../BitVMX-CPU and run cargo build --release
@@ -20,12 +20,16 @@ use tracing::error;
     //      cargo run --release --example client
 
     pub(crate) fn run_job() -> Result<(), anyhow::Error> {
+        let elf_path =
+            "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/hello-world.elf".to_string();
+
+        let commands_file =
+            "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/temp-runs/commands.json".to_string();
+
         let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
-            job_type: EmulatorJobType::Execute(
-                "../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.elf".to_string(),
-            ),
+            job_type: EmulatorJobType::Execute(elf_path.clone(), commands_file.clone()),
         })?;
         channel.send(10, msg)?;
 
@@ -54,4 +58,3 @@ fn main() {
     #[cfg(not(feature = "emulator"))]
     println!("Run with '--features emulator' to run this example");
 }
-

@@ -9,7 +9,7 @@ pub enum ProverJobType {
 }
 
 impl DispatcherMessage for ProverJobType {
-    fn command(&self) -> (String, Vec<String>) {
+    fn command(&self) -> (String, Vec<String>, String) {
         match self {
             ProverJobType::ProveStark(output_file) => {
                 let cmd = "../rust-bitvmx-zk-proof/target/release/host".to_string();
@@ -20,7 +20,7 @@ impl DispatcherMessage for ProverJobType {
                     "--output".to_string(),
                     output_file.clone(),
                 ];
-                (cmd, args)
+                (cmd, args, "".to_string()) // TODO: add command file path
             }
             ProverJobType::ProveSnark(input_file, output_file) => {
                 let cmd = "../rust-bitvmx-zk-proof/target/release/host".to_string();
@@ -31,7 +31,7 @@ impl DispatcherMessage for ProverJobType {
                     "--output".to_string(),
                     output_file.clone(),
                 ];
-                (cmd, args)
+                (cmd, args, "".to_string()) //TODO: add command file path
             }
         }
     }
