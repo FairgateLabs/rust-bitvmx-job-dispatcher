@@ -17,7 +17,7 @@ mod prover{
     // 5. Then trigger one execution
     //      cargo run --release --example risczero
 
-    fn main() -> Result<(), anyhow::Error> {
+    pub(crate) fn run_proof() -> Result<(), anyhow::Error> {
         let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
@@ -64,7 +64,15 @@ mod prover{
     }
 }
 
-#[cfg(not(feature = "prover"))]
+
 fn main() {
+    #[cfg(feature = "prover")]
+    {
+        if let Err(e) = prover::run_proof() {
+            eprintln!("Error: {}", e);
+        }
+    }
+
+    #[cfg(not(feature = "prover"))]
     println!("Run with '--features prover' to run this example");
 }
