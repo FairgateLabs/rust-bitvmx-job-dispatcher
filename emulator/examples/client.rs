@@ -14,12 +14,15 @@ use bitvmx_emulator_job::messages::{EmulatorJob, EmulatorJobType};
 //      cargo run --release --package bitvmx-emulator-job --example client
 
 fn main() -> Result<(), anyhow::Error> {
+    let elf_path = "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/hello-world.elf".to_string();
+
+    let commands_file =
+        "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/temp-runs/commands.json".to_string();
+
     let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
     let msg = serde_json::to_string(&EmulatorJob {
         job_id: "uid_job".to_string(),
-        job_type: EmulatorJobType::Execute(
-            "../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.elf".to_string(),
-        ),
+        job_type: EmulatorJobType::Execute(elf_path.clone(), commands_file.clone()),
     })?;
     channel.send(10, msg)?;
 
