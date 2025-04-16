@@ -37,7 +37,7 @@ mod emulator {
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
-            job_type: EmulatorJobType::ProverExcecute(
+            job_type: EmulatorJobType::ProverExecute(
                 yaml_path.clone(),
                 input.clone(),
                 checkpoint_prover_path.clone(),

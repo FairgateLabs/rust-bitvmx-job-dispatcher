@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EmulatorJobType {
     //TODO: add Force and FailConfiguration to each one
-    Execute(String, String),                         // elf path, command_file
-    ProverExcecute(String, Vec<u8>, String, String), // yaml path, inputs, checkpoint path, command_file
+    Execute(String, String),                        // elf path, command_file
+    ProverExecute(String, Vec<u8>, String, String), // yaml path, inputs, checkpoint path, command_file
     VerifierCheckExecution(String, Vec<u8>, String, u64, String, String), // yaml path, inputs, checkpoint path, claim_last_step, claim_last_hash, command_file
     ProverGetHashesForRound(String, String, u8, u32, String), // pdf, checkpoint_prover_path, round_number, v_decision, command_file
     VerifierChooseSegment(String, String, u8, Vec<String>, String), // pdf, checkpoint_verifier_path, round_number, hashes, command_file
@@ -49,10 +49,11 @@ impl DispatcherMessage for EmulatorJobType {
                 ];
                 Ok((cmd.to_string(), args, command_file.to_string()))
             }
-            EmulatorJobType::ProverExcecute(yaml, input, checkpoint_prover, command_file) => {
+            EmulatorJobType::ProverExecute(yaml, input, checkpoint_prover, command_file) => {
                 let cmd = "../BitVMX-CPU/target/release/emulator";
-                let mut args = vec![
-                    "prover-excecute".to_string(),
+                let hex_input = hex::encode(input);
+                let args = vec![
+                    "prover-execute".to_string(),
                     "--pdf".to_string(),
                     yaml.clone(),
                     "--checkpoint-prover-path".to_string(),
@@ -60,13 +61,9 @@ impl DispatcherMessage for EmulatorJobType {
                     "--force".to_string(),
                     "--command-file".to_string(),
                     command_file.clone(),
+                    "--input".to_string(),
+                    hex_input.clone(),
                 ];
-
-                // Extend with multiple --input flags
-                for i in input {
-                    args.push("--input".to_string());
-                    args.push(i.to_string());
-                }
 
                 Ok((cmd.to_string(), args, command_file.to_string()))
             }
@@ -79,7 +76,8 @@ impl DispatcherMessage for EmulatorJobType {
                 command_file,
             ) => {
                 let cmd = "../BitVMX-CPU/target/release/emulator";
-                let mut args = vec![
+                let hex_input = hex::encode(input);
+                let args = vec![
                     "verifier-check-execution".to_string(),
                     "--pdf".to_string(),
                     yaml.clone(),
@@ -92,13 +90,9 @@ impl DispatcherMessage for EmulatorJobType {
                     claim_last_hash.clone(),
                     "--command-file".to_string(),
                     command_file.clone(),
+                    "--input".to_string(),
+                    hex_input.clone(),
                 ];
-
-                // Extend with multiple --input flags
-                for i in input {
-                    args.push("--input".to_string());
-                    args.push(i.to_string());
-                }
 
                 Ok((cmd.to_string(), args, command_file.to_string()))
             }
@@ -195,7 +189,7 @@ impl DispatcherMessage for EmulatorJobType {
     fn message_type(&self) -> String {
         let msg_type = match self {
             EmulatorJobType::Execute(_, _) => "ExecuteResult",
-            EmulatorJobType::ProverExcecute(_, _, _, _) => "ProverExecuteResult",
+            EmulatorJobType::ProverExecute(_, _, _, _) => "ProverExecuteResult",
             EmulatorJobType::VerifierCheckExecution(_, _, _, _, _, _) => {
                 "VerifierCheckExecutionResult"
             }
