@@ -1,10 +1,14 @@
 #[cfg(feature = "prover")]
 mod prover{
-    use std::{thread::sleep, time::Duration};
+    use std::{result, thread::sleep, time::Duration};
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_job_dispatcher::{
-        dispatcher::dispatcher_job::DispatcherJob, message_type::prover_messages::ProverJobType,
+        dispatcher::dispatcher_job::DispatcherJob, 
+        message_type::prover_messages::{
+            ProverJobType, 
+            ProverResultType
+        },
     };
 
     // To make this example work, you need to:
@@ -15,13 +19,16 @@ mod prover{
     // 4. Then run the job-dispatcher
     //      cargo run --release --features "prover"
     // 5. Then trigger one execution
-    //      cargo run --release --example risczero
+    //      cargo run --release --example risczero --features "prover"
 
     pub(crate) fn run_proof() -> Result<(), anyhow::Error> {
         let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
-            job_type: ProverJobType::ProveStark("./stark-proof.bin".to_string()),
+            job_type: ProverJobType::ProveStark(
+                "./stark-proof.bin".to_string(),
+                "./output.json".to_string(),
+            ),
         })?;
         channel.send(10, msg)?;
 
@@ -30,8 +37,8 @@ mod prover{
         for _ in 0..100 {
             if let Some((msg, _from)) = channel.recv()? {
                 println!("Received: {}", msg);
-                stark_proved = true;
-                break;
+                let result = ProverResultType::from_value(msg)?;
+                stark_proved = result.is_prove_stark();
             } else {
                 println!("Waiting result execution");
                 sleep(Duration::from_secs(1));
@@ -43,6 +50,7 @@ mod prover{
                 job_type: ProverJobType::ProveSnark(
                     "stark-proof.bin".to_string(),
                     "snark-seal.json".to_string(),
+                    "output.json".to_string(),
                 ),
             })?;
             channel.send(10, msg)?;
@@ -50,14 +58,21 @@ mod prover{
             for _ in 0..1000 {
                 if let Some((msg, _from)) = channel.recv()? {
                     println!("Received: {}", msg);
+                    let result = ProverResultType::from_value(msg)?;
+                    if result.is_prove_snark() {
+                        println!("✅ Prover finished successfully");
+                    } else {
+                        println!("❌ Error: Prover failed");
+                    }
                     break;
                 } else {
                     println!("Waiting result execution");
                     sleep(Duration::from_secs(1));
                 }
             }
+            
         } else {
-            println!("Stark proof failed");
+            println!("❌ Error: Prover failed");
         }
 
         Ok(())
