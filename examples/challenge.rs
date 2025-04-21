@@ -9,7 +9,7 @@ mod emulator {
         dispatcher::dispatcher_job::DispatcherJob,
         message_type::emulator_messages::{EmulatorJobType, EmulatorResultType},
     };
-    use std::{thread::sleep, time::Duration};
+    use std::{fs, path::Path, thread::sleep, time::Duration};
 
     // To make this example work, you need to:
     // 1. go to ../BitVMX-CPU and run cargo build --release
@@ -34,6 +34,15 @@ mod emulator {
                 .to_string();
         let commands_file =
             "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/temp-runs/commands.json".to_string();
+
+        for path in &[
+            checkpoint_prover_path.clone(),
+            checkpoint_verifier_path.clone(),
+        ] {
+            if !Path::new(path).exists() {
+                fs::create_dir_all(path)?;
+            }
+        }
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
