@@ -77,7 +77,6 @@ impl DispatcherMessage for EmulatorJobType {
                     yaml.clone(),
                     "--checkpoint-verifier-path".to_string(),
                     checkpoint_verifier.clone(),
-                    "--force".to_string(),
                     "--claim-last-step".to_string(),
                     claim_last_step.to_string(),
                     "--claim-last-hash".to_string(),
