@@ -18,7 +18,7 @@ mod emulator {
     // 3. Then run the job-dispatcher
     //      cargo run --release
     // 4. Then trigger one execution
-    //      cargo run --release --package bitvmx-emulator-job --example test_challenge
+    //      cargo run --release --package bitvmx-emulator-job --example test_challenge --features "emulator"
     pub(crate) fn run_job() -> Result<(), anyhow::Error> {
         let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
 

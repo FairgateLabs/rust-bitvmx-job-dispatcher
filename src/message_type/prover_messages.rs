@@ -41,21 +41,23 @@ impl DispatcherMessage for ProverJobType {
     
     fn message_type(&self) -> String {
         match self {
-            ProverJobType::ProveStark(..) => "ProveStark".to_string(),
-            ProverJobType::ProveSnark(..) => "ProveSnark".to_string(),
+            ProverJobType::ProveStark(..) => "ProveStarkResult".to_string(),
+            ProverJobType::ProveSnark(..) => "ProveSnarkResult".to_string(),
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ProverResultType {
     ProveStarkResult, //result
     ProveSnarkResult, //result
 }
 
 impl ProverResultType {
-    pub fn from_value(value: String) -> Result<Self, DispatcherError> {
-        let result: Self = serde_json::from_str(&value)?;
+    pub fn from_json_string(json: String) -> Result<Self, DispatcherError> {
+        let value = serde_json::from_str::<serde_json::Value>(&json)?;
+        let result: Self = serde_json::from_value(value)?;
         Ok(result)
     }
     

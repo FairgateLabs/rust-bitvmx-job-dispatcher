@@ -26,12 +26,6 @@ pub enum EmulatorResultType {
     VerifierChooseChallengeResult { challenge: ChallengeType },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct EmulatorResult {
-    pub job_id: String,
-    pub job_type: EmulatorResultType,
-}
-
 impl DispatcherMessage for EmulatorJobType {
     fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
         match self {

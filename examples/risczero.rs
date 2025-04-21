@@ -10,6 +10,8 @@ mod prover{
             ProverResultType
         },
     };
+    use serde_json::json;
+    use tracing::info;
 
     // To make this example work, you need to:
     // 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
@@ -34,11 +36,14 @@ mod prover{
 
         let mut stark_proved = false;
 
+        println!("Resultype: {}", json!(ProverResultType::ProveStarkResult).to_string());
+
         for _ in 0..100 {
             if let Some((msg, _from)) = channel.recv()? {
                 println!("Received: {}", msg);
-                let result = ProverResultType::from_value(msg)?;
+                let result = ProverResultType::from_json_string(msg)?;
                 stark_proved = result.is_prove_stark();
+                break;
             } else {
                 println!("Waiting result execution");
                 sleep(Duration::from_secs(1));
@@ -58,7 +63,7 @@ mod prover{
             for _ in 0..1000 {
                 if let Some((msg, _from)) = channel.recv()? {
                     println!("Received: {}", msg);
-                    let result = ProverResultType::from_value(msg)?;
+                    let result = ProverResultType::from_json_string(msg)?;
                     if result.is_prove_snark() {
                         println!("✅ Prover finished successfully");
                     } else {
