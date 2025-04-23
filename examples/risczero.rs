@@ -28,6 +28,7 @@ mod prover{
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
             job_type: ProverJobType::ProveStark(
+                50,
                 "./stark-proof.bin".to_string(),
                 "./output.json".to_string(),
             ),
@@ -35,8 +36,6 @@ mod prover{
         channel.send(10, msg)?;
 
         let mut stark_proved = false;
-
-        println!("Resultype: {}", json!(ProverResultType::ProveStarkResult).to_string());
 
         for _ in 0..100 {
             if let Some((msg, _from)) = channel.recv()? {
@@ -54,7 +53,6 @@ mod prover{
                 job_id: "uid_job_2".to_string(),
                 job_type: ProverJobType::ProveSnark(
                     "stark-proof.bin".to_string(),
-                    "snark-seal.json".to_string(),
                     "output.json".to_string(),
                 ),
             })?;
@@ -64,6 +62,7 @@ mod prover{
                 if let Some((msg, _from)) = channel.recv()? {
                     println!("Received: {}", msg);
                     let result = ProverResultType::from_json_string(msg)?;
+                    println!("Result: {:?}", result);
                     if result.is_prove_snark() {
                         println!("✅ Prover finished successfully");
                     } else {
