@@ -6,9 +6,7 @@ mod prover {
         dispatcher::dispatcher_job::DispatcherJob,
         message_type::prover_messages::{ProverJobType, ProverResultType},
     };
-    use serde_json::json;
-    use std::{result, thread::sleep, time::Duration};
-    use tracing::info;
+    use std::{thread::sleep, time::Duration};
 
     // To make this example work, you need to:
     // 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
@@ -34,12 +32,12 @@ mod prover {
 
         for _ in 0..1000 {
             if let Some((msg, _from)) = channel.recv()? {
-                info!("Received: {}", msg);
+                println!("Received: {}", msg);
                 let result = ProverResultType::from_json_string(msg)?;
-                info!("Result: {:?}", result);
+                println!("Result: {:?}", result);
                 break;
             } else {
-                info!("Waiting result execution");
+                println!("Waiting result execution");
                 sleep(Duration::from_secs(1));
             }
         }
