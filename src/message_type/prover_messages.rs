@@ -1,48 +1,40 @@
+use crate::dispatcher::{dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage};
 use serde::{Deserialize, Serialize};
-use crate::dispatcher::{dispatcher_error::DispatcherError ,dispatcher_message::DispatcherMessage};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProverJobType {
-    ProveStark(String, String),         // output binary file path, output json file path
-    ProveSnark(String, String, String), // input binary file path, output file path, output json file path
+    Prove(Vec<u8>, String, String),
 }
 
 impl DispatcherMessage for ProverJobType {
     fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
         match self {
-            ProverJobType::ProveStark(output_file, json) => {
-                let cmd = "../rust-bitvmx-zk-proof/target/release/host".to_string();
+            ProverJobType::Prove(input_value, elf, json) => {
+                let input_value = u32::from_be_bytes(input_value.as_slice().try_into().unwrap());
+                let cmd = "sh".to_string();
                 let args = vec![
-                    "prove-stark".to_string(),
-                    "--input".to_string(),
-                    "50".to_string(),
-                    "--output".to_string(),
-                    output_file.clone(),
-                    "--json".to_string(),
-                    json.clone(),
-                ];
-                Ok((cmd, args, json.clone()))
-            }
-            ProverJobType::ProveSnark(input_file, output_file, json) => {
-                let cmd = "../rust-bitvmx-zk-proof/target/release/host".to_string();
-                let args = vec![
-                    "prove-snark".to_string(),
-                    "--input".to_string(),
-                    input_file.clone(),
-                    "--output".to_string(),
-                    output_file.clone(),
-                    "--json".to_string(),
-                    json.clone(),
+                    "-c".to_string(),
+                    format!(
+                        "../rust-bitvmx-zk-proof/target/release/host prove-stark \
+                        --input {} \
+                        --output \
+                        ./stark-proof.bin \
+                        --json {} \
+                        && ../rust-bitvmx-zk-proof/target/release/host \
+                        prove-snark \
+                        --input ./stark-proof.bin \
+                        --json {}",
+                        input_value, json, json
+                    ),
                 ];
                 Ok((cmd, args, json.clone()))
             }
         }
     }
-    
+
     fn message_type(&self) -> String {
         match self {
-            ProverJobType::ProveStark(..) => "ProveStarkResult".to_string(),
-            ProverJobType::ProveSnark(..) => "ProveSnarkResult".to_string(),
+            ProverJobType::Prove(..) => "ProveResult".to_string(),
         }
     }
 }
@@ -50,8 +42,7 @@ impl DispatcherMessage for ProverJobType {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum ProverResultType {
-    ProveStarkResult, //result
-    ProveSnarkResult, //result
+    ProveResult { vec: Vec<u8>, status: String },
 }
 
 impl ProverResultType {
@@ -59,19 +50,5 @@ impl ProverResultType {
         let value = serde_json::from_str::<serde_json::Value>(&json)?;
         let result: Self = serde_json::from_value(value)?;
         Ok(result)
-    }
-    
-    pub fn is_prove_stark(&self) -> bool {
-        match self {
-            ProverResultType::ProveStarkResult => true,
-            _ => false,
-        }
-    }
-    
-    pub fn is_prove_snark(&self) -> bool {
-        match self {
-            ProverResultType::ProveSnarkResult => true,
-            _ => false,
-        }
     }
 }
