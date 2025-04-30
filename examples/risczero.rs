@@ -34,7 +34,8 @@ mod prover {
         for _ in 0..1000 {
             if let Some((msg, _from)) = channel.recv()? {
                 println!("Received: {}", msg);
-                let result = ProverResultType::from_json_string(msg)?;
+                let result = ProverResultType::from_json_string(msg)
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 println!("Result: {:?}", result);
                 break;
             } else {
