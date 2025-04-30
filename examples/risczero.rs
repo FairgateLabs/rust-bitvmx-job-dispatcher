@@ -4,9 +4,10 @@ mod prover {
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_job_dispatcher::{
         dispatcher::dispatcher_job::DispatcherJob,
-        message_type::prover_messages::{ProverJobType, ProverResultType},
+        message_type::prover_messages::ProverJobType,
     };
     use std::{thread::sleep, time::Duration};
+    use zk_result::ResultType as ProverResultType;
 
     // To make this example work, you need to:
     // 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
