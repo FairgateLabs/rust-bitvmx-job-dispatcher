@@ -1,7 +1,5 @@
 use std::{
-    fs,
     net::IpAddr,
-    process::{Child, Command},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -12,101 +10,21 @@ use std::{
 use anyhow::Result;
 use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
 
-use bitvmx_job_dispatcher::dispatcher::{
-    dispatcher_message::DispatcherMessage,
-    dispatcher_module::{Dispatcher, JobContext},
-};
-#[cfg(feature = "emulator")]
-use bitvmx_job_dispatcher::message_type::emulator_messages::EmulatorJobType;
-#[cfg(feature = "prover")]
-use bitvmx_job_dispatcher::message_type::prover_messages::ProverJobType;
-use serde::de::DeserializeOwned;
-use tracing::{error, info};
+use bitvmx_job_dispatcher::DispatcherHandler;
+use tracing::info;
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
-
-pub fn process_msg<V>(dispatcher: &mut Dispatcher<V>, msg: &str) -> Option<(Child, JobContext)>
-where
-    V: DispatcherMessage + DeserializeOwned,
-{
-    info!("Received: {:?}", msg);
-
-    let (cmd, args, job_context) = dispatcher.process_msg(msg).ok()?;
-
-    let child = Command::new(cmd).args(args).spawn();
-
-    if let Err(e) = child {
-        error!("Error executing command: {}", e);
-        dispatcher.discard_job(&job_context.job_id);
-        return None;
-    }
-    let child = child.unwrap();
-
-    Some((child, job_context))
-}
 
 fn dispatcher_loop(
     channel: DualChannel,
     check_interval: Duration,
     running: Arc<AtomicBool>,
 ) -> Result<(), anyhow::Error> {
-    let mut workers: Vec<(Child, u32, JobContext)> = Vec::new();
-    #[cfg(feature = "emulator")]
-    let mut dispatcher = Dispatcher::<EmulatorJobType>::new();
-    #[cfg(feature = "prover")]
-    let mut dispatcher = Dispatcher::<ProverJobType>::new();
+    let mut dispacher_handler = DispatcherHandler::new(channel);
 
     while running.load(Ordering::SeqCst) {
-        let msg = channel.recv();
-        match msg {
-            Ok(msg) => {
-                if let Some(msg) = msg {
-                    if let Some((child, context)) = process_msg(&mut dispatcher, &msg.0) {
-                        workers.push((child, msg.1, context));
-                    } else {
-                        error!("Error processing message: {:?}", msg);
-                    }
-                }
-            }
-            Err(e) => error!("Error: {:?}", e),
-        }
-
-        if !workers.is_empty() {
-            workers.retain_mut(|(child, id, context)| match child.try_wait() {
-                Ok(Some(status)) => match fs::read_to_string(&context.command_file) {
-                    Ok(buf) => {
-                        info!("Worker output from file: {}", buf);
-                        info!("Worker exited with status: {:?}", status);
-
-                        if let Some(result) =
-                            dispatcher.process_result(&context.job_id, buf, status)
-                        {
-                            if let Err(e) = channel.send(*id, result) {
-                                error!("Failed to send result: {}", e);
-                            }
-                        }
-                        false
-                    }
-                    Err(e) => {
-                        error!("Failed to read file {}: {}", context.command_file, e);
-                        if let Err(e) = channel.send(*id, "Failed to read file".to_string()) {
-                            error!("Failed to send error message: {}", e);
-                        }
-                        false
-                    }
-                },
-                Ok(None) => true,
-                Err(e) => {
-                    error!("Error checking worker: {}", e);
-                    if let Err(e) = channel.send(*id, "Error checking worker status".to_string()) {
-                        error!("Failed to send error message: {}", e);
-                    }
-                    false
-                }
-            });
-        }
-
+        dispacher_handler.tick();
         std::thread::sleep(check_interval);
     }
 
