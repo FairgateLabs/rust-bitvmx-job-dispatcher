@@ -13,6 +13,7 @@ anyhow = "1.0.95"
 serde = { version = "1.0.130", features = ["derive"] }
 thiserror = "2.0.11"
 bitvmx-cpu-definitions = { path = "../BitVMX-CPU/definitions" }
+zk-result = { path = "../rust-bitvmx-zk-proof/zk-result"}
 hex = "0.4"
 
 [dev-dependencies]

@@ -4,9 +4,10 @@ mod prover {
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_job_dispatcher::{
         dispatcher::dispatcher_job::DispatcherJob,
-        message_type::prover_messages::{ProverJobType, ProverResultType},
+        message_type::prover_messages::ProverJobType,
     };
     use std::{thread::sleep, time::Duration};
+    use zk_result::ResultType as ProverResultType;
 
     // To make this example work, you need to:
     // 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
@@ -33,7 +34,8 @@ mod prover {
         for _ in 0..1000 {
             if let Some((msg, _from)) = channel.recv()? {
                 println!("Received: {}", msg);
-                let result = ProverResultType::from_json_string(msg)?;
+                let result = ProverResultType::from_json_string(msg)
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 println!("Result: {:?}", result);
                 break;
             } else {

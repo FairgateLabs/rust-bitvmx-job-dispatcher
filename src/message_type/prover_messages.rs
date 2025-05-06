@@ -38,17 +38,3 @@ impl DispatcherMessage for ProverJobType {
         }
     }
 }
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
-pub enum ProverResultType {
-    ProveResult { vec: Vec<u8>, status: String },
-}
-
-impl ProverResultType {
-    pub fn from_json_string(json: String) -> Result<Self, DispatcherError> {
-        let value = serde_json::from_str::<serde_json::Value>(&json)?;
-        let result: Self = serde_json::from_value(value)?;
-        Ok(result)
-    }
-}
