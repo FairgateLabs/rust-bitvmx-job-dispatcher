@@ -4,32 +4,16 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
 };
 
 use anyhow::Result;
 use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
 
-use bitvmx_job_dispatcher::DispatcherHandler;
+use bitvmx_risczero_dispatcher::dispatcher_loop;
 use tracing::info;
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
-
-fn dispatcher_loop(
-    channel: DualChannel,
-    check_interval: Duration,
-    running: Arc<AtomicBool>,
-) -> Result<(), anyhow::Error> {
-    let mut dispacher_handler = DispatcherHandler::new(channel);
-
-    while running.load(Ordering::SeqCst) {
-        dispacher_handler.tick();
-        std::thread::sleep(check_interval);
-    }
-
-    Ok(())
-}
 
 fn init_trace() -> Result<(), anyhow::Error> {
     let filter = EnvFilter::builder()

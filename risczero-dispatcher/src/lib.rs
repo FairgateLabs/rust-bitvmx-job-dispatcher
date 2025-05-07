@@ -1,11 +1,16 @@
-pub mod dispatcher;
 use std::{
     fs,
     process::{Child, Command},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
 
 use bitvmx_broker::channel::channel::DualChannel;
 
+use bitvmx_job_dispatcher::dispatcher_module::{Dispatcher, JobContext};
 use bitvmx_job_dispatcher_types::dispatcher_message::DispatcherMessage;
 use bitvmx_job_dispatcher_types::ProverJobType;
 use serde::de::DeserializeOwned;
@@ -105,4 +110,19 @@ impl DispatcherHandler {
                 });
         }
     }
+}
+
+pub fn dispatcher_loop(
+    channel: DualChannel,
+    check_interval: Duration,
+    running: Arc<AtomicBool>,
+) -> Result<(), anyhow::Error> {
+    let mut dispacher_handler = DispatcherHandler::new(channel);
+
+    while running.load(Ordering::SeqCst) {
+        dispacher_handler.tick();
+        std::thread::sleep(check_interval);
+    }
+
+    Ok(())
 }
