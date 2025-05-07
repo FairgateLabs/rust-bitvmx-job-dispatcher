@@ -1,15 +1,9 @@
-use crate::dispatcher::{dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ProverJobType {
-    Prove(Vec<u8>, String, String),
-}
+use crate::{dispatcher_message::DispatcherMessage, JobTypeError, ProverJobType};
 
 impl DispatcherMessage for ProverJobType {
-    fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
+    fn command(&self) -> Result<(String, Vec<String>, String), JobTypeError> {
         match self {
-            ProverJobType::Prove(input_value, elf, json) => {
+            ProverJobType::Prove(input_value, _elf, json) => {
                 let input_value = u32::from_be_bytes(input_value.as_slice().try_into().unwrap());
                 let cmd = "sh".to_string();
                 let args = vec![

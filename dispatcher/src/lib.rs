@@ -1,5 +1,4 @@
 pub mod dispatcher;
-pub mod message_type;
 use std::{
     fs,
     process::{Child, Command},
@@ -7,14 +6,12 @@ use std::{
 
 use bitvmx_broker::channel::channel::DualChannel;
 
-use dispatcher::{
-    dispatcher_message::DispatcherMessage,
-    dispatcher_module::{Dispatcher, JobContext},
-};
+use bitvmx_job_dispatcher_types::dispatcher_message::DispatcherMessage;
 #[cfg(feature = "emulator")]
-use message_type::emulator_messages::EmulatorJobType;
+use bitvmx_job_dispatcher_types::EmulatorJobType;
 #[cfg(feature = "prover")]
-use message_type::prover_messages::ProverJobType;
+use bitvmx_job_dispatcher_types::ProverJobType;
+use dispatcher::dispatcher_module::{Dispatcher, JobContext};
 use serde::de::DeserializeOwned;
 use tracing::{error, info};
 
@@ -25,6 +22,8 @@ where
     info!("Received: {:?}", msg);
 
     let (cmd, args, job_context) = dispatcher.process_msg(msg).ok()?;
+    info!("Command: {:?}", cmd);
+    info!("Args: {:?}", args);
 
     let child = Command::new(cmd).args(args).spawn();
 

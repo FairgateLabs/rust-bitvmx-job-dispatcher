@@ -2,10 +2,7 @@
 mod prover {
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
-    use bitvmx_job_dispatcher::{
-        dispatcher::dispatcher_job::DispatcherJob,
-        message_type::prover_messages::ProverJobType,
-    };
+    use bitvmx_job_dispatcher_types::{dispatcher_job::DispatcherJob, ProverJobType};
     use std::{thread::sleep, time::Duration};
     use zk_result::ResultType as ProverResultType;
 
@@ -34,8 +31,8 @@ mod prover {
         for _ in 0..1000 {
             if let Some((msg, _from)) = channel.recv()? {
                 println!("Received: {}", msg);
-                let result = ProverResultType::from_json_string(msg)
-                    .map_err(|e| anyhow::anyhow!(e))?;
+                let result =
+                    ProverResultType::from_json_string(msg).map_err(|e| anyhow::anyhow!(e))?;
                 println!("Result: {:?}", result);
                 break;
             } else {

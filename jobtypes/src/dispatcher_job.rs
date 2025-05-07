@@ -1,7 +1,8 @@
-use crate::dispatcher::dispatcher_message::DispatcherMessage;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+use crate::dispatcher_message::DispatcherMessage;
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DispatcherJob<P>
 where
     P: DispatcherMessage,

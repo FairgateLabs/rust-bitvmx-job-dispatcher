@@ -1,3 +1,4 @@
+#[cfg(feature = "emulator")]
 use tracing::error;
 
 #[cfg(feature = "emulator")]
@@ -5,9 +6,7 @@ mod emulator {
 
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
-    use bitvmx_job_dispatcher::{
-        dispatcher::dispatcher_job::DispatcherJob, message_type::emulator_messages::EmulatorJobType,
-    };
+    use bitvmx_job_dispatcher_types::{dispatcher_job::DispatcherJob, EmulatorJobType};
     use std::{thread::sleep, time::Duration};
 
     // To make this example work, you need to:

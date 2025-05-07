@@ -1,3 +1,4 @@
+#[cfg(feature = "emulator")]
 use tracing::error;
 
 #[cfg(feature = "emulator")]
@@ -5,9 +6,8 @@ mod emulator {
 
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
-    use bitvmx_job_dispatcher::{
-        dispatcher::dispatcher_job::DispatcherJob,
-        message_type::emulator_messages::{EmulatorJobType, EmulatorResultType},
+    use bitvmx_job_dispatcher_types::{
+        dispatcher_job::DispatcherJob, EmulatorJobType, EmulatorResultType,
     };
     use std::{fs, path::Path, thread::sleep, time::Duration};
 
@@ -24,16 +24,10 @@ mod emulator {
 
         let input = 0;
         let input = vec![17, 17, 17, input];
-        let yaml_path =
-            "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/hello-world.yaml".to_string();
-        let checkpoint_prover_path =
-            "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/temp-runs/challenge/42/prover/"
-                .to_string();
-        let checkpoint_verifier_path =
-            "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/temp-runs/challenge/42/verifier/"
-                .to_string();
-        let commands_file =
-            "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/temp-runs/commands.json".to_string();
+        let yaml_path = "../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml".to_string();
+        let checkpoint_prover_path = "temp-runs/challenge/42/prover/".to_string();
+        let checkpoint_verifier_path = "temp-runs/challenge/42/verifier/".to_string();
+        let commands_file = "temp-runs/commands.json".to_string();
 
         for path in &[
             checkpoint_prover_path.clone(),
@@ -203,6 +197,7 @@ fn main() {
     #[cfg(feature = "emulator")]
     {
         if let Err(e) = emulator::run_job() {
+            println!("Error: {}", e);
             error!("{}", e);
         }
     }

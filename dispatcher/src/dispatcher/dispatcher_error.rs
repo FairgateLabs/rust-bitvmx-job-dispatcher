@@ -1,3 +1,4 @@
+use bitvmx_job_dispatcher_types::JobTypeError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -10,4 +11,7 @@ pub enum DispatcherError {
 
     #[error("Job id already exists")]
     JobIdAlreadyExists,
+
+    #[error("JobTypeError {0}")]
+    JobTypeError(#[from] JobTypeError),
 }

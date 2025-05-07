@@ -1,12 +1,12 @@
 use std::{collections::HashMap, process::ExitStatus};
 
-use serde::de::DeserializeOwned;
-use tracing::error;
-
-use crate::dispatcher::{
-    dispatcher_error::DispatcherError, dispatcher_job::DispatcherJob,
-    dispatcher_message::DispatcherMessage,
+use bitvmx_job_dispatcher_types::{
+    dispatcher_job::DispatcherJob, dispatcher_message::DispatcherMessage,
 };
+use serde::de::DeserializeOwned;
+use tracing::{error, info};
+
+use crate::dispatcher::dispatcher_error::DispatcherError;
 
 #[derive(Clone)]
 pub struct JobContext {
@@ -44,19 +44,25 @@ where
         &mut self,
         msg: &str,
     ) -> Result<(String, Vec<String>, JobContext), DispatcherError> {
+        info!("Received: {:?}", msg);
         let msg: DispatcherJob<V> = serde_json::from_str(msg)?;
+        info!("1");
 
         if self.jobs.contains_key(msg.job_id()) {
             error!("Job id already exists: {}", msg.job_id());
             return Err(DispatcherError::JobIdAlreadyExists);
         }
+        info!("2");
 
         let (cmd, args, command_file) = msg.job_type.command()?;
 
+        info!("3");
         let job_context = JobContext::new(msg.job_id.clone(), command_file.clone());
 
+        info!("4");
         self.jobs.insert(msg.job_id().clone(), msg.job_type);
 
+        info!("5");
         Ok((cmd.to_string(), args, job_context))
     }
 
