@@ -14,7 +14,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
 bitvmx-cpu-definitions = { path = "../../BitVMX-CPU/definitions" }
 hex = "0.4"
-bitvmx-job-dispatcher-types = { path = "../jobtypes" }
+bitvmx-job-dispatcher-types = { path = "../jobtypes", features = ["emulator"] }
 bitvmx-job-dispatcher = { path = "../dispatcher" }
 
 [dev-dependencies]

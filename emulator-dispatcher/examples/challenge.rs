@@ -4,9 +4,8 @@ mod emulator {
 
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
-    use bitvmx_job_dispatcher_types::{
-        dispatcher_job::DispatcherJob, EmulatorJobType, EmulatorResultType,
-    };
+    use bitvmx_job_dispatcher::dispatcher_job::DispatcherJob;
+    use bitvmx_job_dispatcher_types::emulator_messages::{EmulatorJobType, EmulatorResultType};
     use std::{fs, path::Path, thread::sleep, time::Duration};
 
     // To make this example work, you need to:

@@ -1,7 +1,8 @@
 mod prover {
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
-    use bitvmx_job_dispatcher_types::{dispatcher_job::DispatcherJob, ProverJobType};
+    use bitvmx_job_dispatcher::dispatcher_job::DispatcherJob;
+    use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
     use std::{thread::sleep, time::Duration};
     use zk_result::ResultType as ProverResultType;
 

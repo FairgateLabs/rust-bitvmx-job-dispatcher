@@ -10,7 +10,7 @@ use anyhow::Result;
 use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
 
 use bitvmx_job_dispatcher::dispatcher_loop;
-use bitvmx_job_dispatcher_types::ProverJobType;
+use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
 use tracing::info;
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,

@@ -1,4 +1,6 @@
 pub mod dispatcher_error;
+pub mod dispatcher_job;
+pub mod dispatcher_message;
 pub mod dispatcher_module;
 
 use std::{
@@ -13,7 +15,7 @@ use std::{
 
 use bitvmx_broker::channel::channel::DualChannel;
 
-use bitvmx_job_dispatcher_types::dispatcher_message::DispatcherMessage;
+use dispatcher_message::DispatcherMessage;
 use dispatcher_module::{Dispatcher, JobContext};
 use serde::de::DeserializeOwned;
 use tracing::{error, info};

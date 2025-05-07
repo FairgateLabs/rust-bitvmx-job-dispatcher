@@ -14,7 +14,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
 zk-result = { path = "../../rust-bitvmx-zk-proof/zk-result" }
 hex = "0.4"
-bitvmx-job-dispatcher-types = { path = "../jobtypes" }
+bitvmx-job-dispatcher-types = { path = "../jobtypes", features = ["prover"] }
 bitvmx-job-dispatcher = { path = "../dispatcher" }
 
 [dev-dependencies]

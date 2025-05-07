@@ -1,7 +1,10 @@
-use crate::{dispatcher_message::DispatcherMessage, JobTypeError, ProverJobType};
+use bitvmx_job_dispatcher::{
+    dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
+};
+use serde::{Deserialize, Serialize};
 
 impl DispatcherMessage for ProverJobType {
-    fn command(&self) -> Result<(String, Vec<String>, String), JobTypeError> {
+    fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
         match self {
             ProverJobType::Prove(input_value, _elf, json) => {
                 let input_value = u32::from_be_bytes(input_value.as_slice().try_into().unwrap());
@@ -31,4 +34,9 @@ impl DispatcherMessage for ProverJobType {
             ProverJobType::Prove(..) => "ProveResult".to_string(),
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ProverJobType {
+    Prove(Vec<u8>, String, String),
 }
