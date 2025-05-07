@@ -1,12 +1,11 @@
 use std::{collections::HashMap, process::ExitStatus};
 
+use crate::dispatcher_error::DispatcherError;
 use bitvmx_job_dispatcher_types::{
     dispatcher_job::DispatcherJob, dispatcher_message::DispatcherMessage,
 };
 use serde::de::DeserializeOwned;
 use tracing::error;
-
-use crate::dispatcher_error::DispatcherError;
 
 #[derive(Clone)]
 pub struct JobContext {
