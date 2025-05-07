@@ -6,7 +6,7 @@ use bitvmx_job_dispatcher_types::{
 use serde::de::DeserializeOwned;
 use tracing::{error, info};
 
-use crate::dispatcher::dispatcher_error::DispatcherError;
+use crate::dispatcher_error::DispatcherError;
 
 #[derive(Clone)]
 pub struct JobContext {

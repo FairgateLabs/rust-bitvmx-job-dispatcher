@@ -1,4 +1,9 @@
 [workspace]
 resolver = "2"
 
-members = ["dispatcher", "jobtypes"]
+members = [
+    "dispatcher",
+    "risczero-dispatcher",
+    "emulator-dispatcher",
+    "jobtypes",
+]

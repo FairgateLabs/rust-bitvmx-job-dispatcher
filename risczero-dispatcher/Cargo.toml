@@ -1,10 +1,10 @@
 [package]
-name = "bitvmx-job-dispatcher"
+name = "bitvmx-risczero-dispatcher"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-#bitvmx-broker = { path = "../../rust-bitvmx-broker" }
+bitvmx-broker = { path = "../../rust-bitvmx-broker" }
 tracing = "0.1.26"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde_json = "1.0.64"
@@ -12,8 +12,10 @@ ctrlc = "3.2.0"
 anyhow = "1.0.95"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
+zk-result = { path = "../../rust-bitvmx-zk-proof/zk-result" }
 hex = "0.4"
 bitvmx-job-dispatcher-types = { path = "../jobtypes" }
+bitvmx-job-dispatcher = { path = "../dispatcher" }
 
 [dev-dependencies]
 config = "0.15.11"

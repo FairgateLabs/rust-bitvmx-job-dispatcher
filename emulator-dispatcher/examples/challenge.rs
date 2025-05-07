@@ -1,7 +1,5 @@
-#[cfg(feature = "emulator")]
 use tracing::error;
 
-#[cfg(feature = "emulator")]
 mod emulator {
 
     use bitvmx_broker::channel::channel::DualChannel;
@@ -194,14 +192,8 @@ mod emulator {
 }
 
 fn main() {
-    #[cfg(feature = "emulator")]
-    {
-        if let Err(e) = emulator::run_job() {
-            println!("Error: {}", e);
-            error!("{}", e);
-        }
+    if let Err(e) = emulator::run_job() {
+        println!("Error: {}", e);
+        error!("{}", e);
     }
-
-    #[cfg(not(feature = "emulator"))]
-    println!("Run with '--features emulator' to run this example");
 }

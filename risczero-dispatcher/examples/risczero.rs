@@ -1,4 +1,3 @@
-#[cfg(feature = "prover")]
 mod prover {
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
@@ -46,13 +45,7 @@ mod prover {
 }
 
 fn main() {
-    #[cfg(feature = "prover")]
-    {
-        if let Err(e) = prover::run_proof() {
-            eprintln!("Error: {}", e);
-        }
+    if let Err(e) = prover::run_proof() {
+        eprintln!("Error: {}", e);
     }
-
-    #[cfg(not(feature = "prover"))]
-    println!("Run with '--features prover' to run this example");
 }
