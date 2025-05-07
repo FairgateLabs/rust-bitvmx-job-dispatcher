@@ -15,6 +15,7 @@ use std::{
 
 use bitvmx_broker::channel::channel::DualChannel;
 
+use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
 use dispatcher_module::{Dispatcher, JobContext};
 use serde::de::DeserializeOwned;
@@ -87,7 +88,10 @@ where
                             if let Some(result) =
                                 self.dispatcher.process_result(&context.job_id, buf, status)
                             {
-                                if let Err(e) = self.channel.send(*id, result) {
+                                if let Err(e) = self.channel.send(
+                                    *id,
+                                    ResultMessage::new(context.job_id.clone(), result).to_string(),
+                                ) {
                                     error!("Failed to send result: {}", e);
                                 }
                             }
