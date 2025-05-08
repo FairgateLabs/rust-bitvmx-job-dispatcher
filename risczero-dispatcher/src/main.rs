@@ -34,7 +34,8 @@ fn main() -> Result<(), anyhow::Error> {
     info!("Starting...");
 
     let config = BrokerConfig::new(10000, Some(IpAddr::from([127, 0, 0, 1])));
-    let channel = DualChannel::new(&config, 10);
+    const PROVER_ID: u32 = 2000;
+    let channel = DualChannel::new(&config, PROVER_ID);
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));

@@ -17,7 +17,7 @@ mod prover {
     //      cargo run --release --example risczero --features "prover"
 
     pub(crate) fn run_proof() -> Result<(), anyhow::Error> {
-        let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
+        let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2000);
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
             job_type: ProverJobType::Prove(

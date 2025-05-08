@@ -87,7 +87,14 @@ where
                             if let Some(result) =
                                 self.dispatcher.process_result(&context.job_id, buf, status)
                             {
-                                if let Err(e) = self.channel.send(*id, result) {
+                                let result_json = serde_json::from_str::<serde_json::Value>(&result).unwrap_or_default();
+                                let mut result_map = result_json.as_object()
+                                    .map(|m| m.clone())
+                                    .unwrap_or_else(|| serde_json::Map::new());
+                                result_map.insert("job_id".to_string(), serde_json::Value::String(context.job_id.clone()));
+                                let result_with_id = serde_json::to_string(&result_map).unwrap();
+
+                                if let Err(e) = self.channel.send(*id, result_with_id) {
                                     error!("Failed to send result: {}", e);
                                 }
                             }
