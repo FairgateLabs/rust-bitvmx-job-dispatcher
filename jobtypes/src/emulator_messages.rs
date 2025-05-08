@@ -1,5 +1,5 @@
 use bitvmx_cpu_definitions::{
-    challenge::{ChallengeType, EmulatorResultType},
+    //challenge::{ChallengeType, EmulatorResultType},
     trace::TraceRWStep,
 };
 use bitvmx_job_dispatcher::{
