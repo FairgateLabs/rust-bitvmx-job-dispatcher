@@ -1,4 +1,7 @@
-use bitvmx_cpu_definitions::{challenge::ChallengeType, trace::TraceRWStep};
+use bitvmx_cpu_definitions::{
+    //challenge::{ChallengeType, EmulatorResultType},
+    trace::TraceRWStep,
+};
 use bitvmx_job_dispatcher::{
     dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
 };
@@ -187,84 +190,8 @@ pub enum EmulatorJobType {
     VerifierChooseChallenge(String, String, TraceRWStep, String), // pdf, checkpoint_verifier_path, prover_final_trace, command_file
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
-pub enum EmulatorResultType {
-    ProverExecuteResult { last_step: u64, last_hash: String },
-    VerifierCheckExecutionResult {},
-    ProverGetHashesForRoundResult { hashes: Vec<String> },
-    VerifierChooseSegmentResult { v_decision: u32 },
-    ProverFinalTraceResult { final_trace: TraceRWStep },
-    VerifierChooseChallengeResult { challenge: ChallengeType },
-}
-
 impl EmulatorJobType {
     pub fn to_string(&self) -> Result<String, DispatcherError> {
         Ok(serde_json::to_string(self)?)
-    }
-}
-
-impl EmulatorResultType {
-    pub fn from_value(value: serde_json::Value) -> Result<Self, DispatcherError> {
-        serde_json::from_value(value).map_err(DispatcherError::SerializationError)
-    }
-
-    pub fn as_prover_execute(&self) -> Result<(u64, String), DispatcherError> {
-        match self {
-            EmulatorResultType::ProverExecuteResult {
-                last_step,
-                last_hash,
-            } => Ok((*last_step, last_hash.clone())),
-            _ => Err(DispatcherError::ResultTypeMismatch(
-                "Expected ProverExecuteResult".to_string(),
-            )),
-        }
-    }
-
-    pub fn as_verifier_check(&self) -> Result<(), DispatcherError> {
-        match self {
-            EmulatorResultType::VerifierCheckExecutionResult {} => Ok(()),
-            _ => Err(DispatcherError::ResultTypeMismatch(
-                "Expected VerifierCheckExecutionResult".to_string(),
-            )),
-        }
-    }
-
-    pub fn as_prover_hashes(&self) -> Result<Vec<String>, DispatcherError> {
-        match self {
-            EmulatorResultType::ProverGetHashesForRoundResult { hashes } => Ok(hashes.clone()),
-            _ => Err(DispatcherError::ResultTypeMismatch(
-                "Expected ProverGetHashesForRoundResult".to_string(),
-            )),
-        }
-    }
-
-    pub fn as_v_decision(&self) -> Result<u32, DispatcherError> {
-        match self {
-            EmulatorResultType::VerifierChooseSegmentResult { v_decision } => Ok(*v_decision),
-            _ => Err(DispatcherError::ResultTypeMismatch(
-                "Expected VerifierChooseSegmentResult".to_string(),
-            )),
-        }
-    }
-
-    pub fn as_final_trace(&self) -> Result<TraceRWStep, DispatcherError> {
-        match self {
-            EmulatorResultType::ProverFinalTraceResult { final_trace } => Ok(final_trace.clone()),
-            _ => Err(DispatcherError::ResultTypeMismatch(
-                "Expected ProverFinalTraceResult".to_string(),
-            )),
-        }
-    }
-
-    pub fn as_challenge(&self) -> Result<ChallengeType, DispatcherError> {
-        match self {
-            EmulatorResultType::VerifierChooseChallengeResult { challenge } => {
-                Ok(challenge.clone())
-            }
-            _ => Err(DispatcherError::ResultTypeMismatch(
-                "Expected VerifierChooseChallengeResult".to_string(),
-            )),
-        }
     }
 }
