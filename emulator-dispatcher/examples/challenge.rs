@@ -4,8 +4,9 @@ mod emulator {
 
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
-    use bitvmx_job_dispatcher::dispatcher_job::DispatcherJob;
-    use bitvmx_job_dispatcher_types::emulator_messages::{EmulatorJobType, EmulatorResultType};
+    use bitvmx_cpu_definitions::challenge::EmulatorResultType;
+    use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
+    use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
     use std::{fs, path::Path, thread::sleep, time::Duration};
 
     // To make this example work, you need to:
@@ -46,10 +47,15 @@ mod emulator {
         })?;
         channel.send(10, msg)?;
 
-        let prover_result = wait_for_result(&channel, "ProverExecuteResult", 10, 1)?;
-        let (step, hash) = EmulatorResultType::from_value(prover_result)?.as_prover_execute()?;
+        let (prover_result, job_id) = wait_for_result(&channel, "ProverExecuteResult", 10, 1)?;
+        let (step, hash, halt) =
+            EmulatorResultType::from_value(prover_result)?.as_prover_execute()?;
 
-        println!("✅ Got prover result: step {}, hash {}", step, hash);
+        println!(
+            "✅ Got prover result: step {}, hash {}, halt {:?}",
+            step, hash, halt
+        );
+        println!("with job_id {}", job_id);
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
@@ -64,10 +70,11 @@ mod emulator {
         })?;
         channel.send(10, msg)?;
 
-        let verifier_result = wait_for_result(&channel, "VerifierCheckExecutionResult", 10, 1)?;
-        let _verifier_result =
-            EmulatorResultType::from_value(verifier_result)?.as_verifier_check()?;
-        println!("✅ Checked verifier result");
+        let (verifier_result, job_id) =
+            wait_for_result(&channel, "VerifierCheckExecutionResult", 10, 1)?;
+        let step = EmulatorResultType::from_value(verifier_result)?.as_verifier_check()?;
+        println!("✅ Checked verifier result with last step {:?}", step);
+        println!("with job_id {}", job_id);
 
         let mut v_decision = 0;
         let total_rounds = get_total_rounds(&yaml_path);
@@ -84,11 +91,12 @@ mod emulator {
             })?;
             channel.send(10, msg)?;
 
-            let prover_hashes_result =
+            let (prover_hashes_result, job_id) =
                 wait_for_result(&channel, "ProverGetHashesForRoundResult", 10, 1)?;
             let hashes =
                 EmulatorResultType::from_value(prover_hashes_result)?.as_prover_hashes()?;
             println!("✅ Got prover hashes: {:?}", hashes);
+            println!("with job_id {}", job_id);
 
             let msg = serde_json::to_string(&DispatcherJob {
                 job_id: "uid_job".to_string(),
@@ -102,11 +110,12 @@ mod emulator {
             })?;
             channel.send(10, msg)?;
 
-            let verifier_choose_segment_result =
+            let (verifier_choose_segment_result, job_id) =
                 wait_for_result(&channel, "VerifierChooseSegmentResult", 10, 1)?;
             v_decision =
                 EmulatorResultType::from_value(verifier_choose_segment_result)?.as_v_decision()?;
             println!("✅ Got verifier choose segment: v_decision {}", v_decision);
+            println!("with job_id {}", job_id);
         }
 
         let msg = serde_json::to_string(&DispatcherJob {
@@ -120,10 +129,11 @@ mod emulator {
         })?;
         channel.send(10, msg)?;
 
-        let final_trace = wait_for_result(&channel, "ProverFinalTraceResult", 10, 1)?;
+        let (final_trace, job_id) = wait_for_result(&channel, "ProverFinalTraceResult", 10, 1)?;
         let final_trace = EmulatorResultType::from_value(final_trace)?.as_final_trace()?;
 
         println!("✅ Got prover final trace: {:?}", final_trace);
+        println!("with job_id {}", job_id);
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
@@ -136,9 +146,10 @@ mod emulator {
         })?;
         channel.send(10, msg)?;
 
-        let result = wait_for_result(&channel, "VerifierChooseChallengeResult", 10, 1)?;
+        let (result, job_id) = wait_for_result(&channel, "VerifierChooseChallengeResult", 10, 1)?;
         let challenge = EmulatorResultType::from_value(result)?.as_challenge()?;
         println!("✅ Got verifier choose challenge: {:?}", challenge);
+        println!("with job_id {}", job_id);
         Ok(())
     }
 
@@ -147,15 +158,16 @@ mod emulator {
         expected_type: &str,
         max_attempts: usize,
         delay_secs: u64,
-    ) -> Result<serde_json::Value, anyhow::Error> {
+    ) -> Result<(serde_json::Value, String), anyhow::Error> {
         for _ in 0..max_attempts {
             if let Some((msg, _from)) = channel.recv()? {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&msg) {
+                let msg = serde_json::from_str::<ResultMessage>(&msg)?;
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&msg.result) {
                     if json["type"] == expected_type {
-                        return Ok(json);
+                        return Ok((json, msg.job_id));
                     }
                 } else {
-                    println!("Received unstructured result: {}", msg);
+                    println!("Received unstructured result: {}", msg.result);
                 }
             } else {
                 println!("Waiting result execution");
