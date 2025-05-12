@@ -23,8 +23,7 @@ mod emulator {
 
         let input = 0;
         let input = vec![17, 17, 17, input];
-        let yaml_path =
-            "../BitVMX-CPU/bitvmx-docker-riscv32/riscv32/build/hello-world.yaml".to_string();
+        let yaml_path = "../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml".to_string();
         let checkpoint_prover_path = "temp-runs/challenge/42/prover/".to_string();
         let checkpoint_verifier_path = "temp-runs/challenge/42/verifier/".to_string();
         let commands_file = "temp-runs/commands.json".to_string();
