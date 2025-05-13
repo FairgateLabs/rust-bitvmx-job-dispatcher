@@ -5,6 +5,7 @@ use bitvmx_cpu_definitions::{
 use bitvmx_job_dispatcher::{
     dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
 };
+use emulator::executor::utils::FailConfiguration;
 use serde::{Deserialize, Serialize};
 
 //windows
@@ -29,9 +30,15 @@ impl DispatcherMessage for EmulatorJobType {
                 ];
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
-            EmulatorJobType::ProverExecute(yaml, input, checkpoint_prover, command_file) => {
+            EmulatorJobType::ProverExecute(
+                yaml,
+                input,
+                checkpoint_prover,
+                command_file,
+                fail_config_prover,
+            ) => {
                 let hex_input = hex::encode(input);
-                let args = vec![
+                let mut args = vec![
                     "prover-execute".to_string(),
                     "--pdf".to_string(),
                     yaml.clone(),
@@ -44,6 +51,11 @@ impl DispatcherMessage for EmulatorJobType {
                     hex_input.clone(),
                 ];
 
+                if let Some(fcp) = fail_config_prover {
+                    args.push("--fail-config-prover".to_string());
+                    args.push(fcp.to_string());
+                }
+
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
             EmulatorJobType::VerifierCheckExecution(
@@ -53,9 +65,10 @@ impl DispatcherMessage for EmulatorJobType {
                 claim_last_step,
                 claim_last_hash,
                 command_file,
+                fail_config_verifier,
             ) => {
                 let hex_input = hex::encode(input);
-                let args = vec![
+                let mut args = vec![
                     "verifier-check-execution".to_string(),
                     "--pdf".to_string(),
                     yaml.clone(),
@@ -71,6 +84,11 @@ impl DispatcherMessage for EmulatorJobType {
                     hex_input.clone(),
                 ];
 
+                if let Some(fcv) = fail_config_verifier {
+                    args.push("--fail-config-verifier".to_string());
+                    args.push(fcv.to_string());
+                }
+
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
             EmulatorJobType::ProverGetHashesForRound(
@@ -79,8 +97,9 @@ impl DispatcherMessage for EmulatorJobType {
                 round_number,
                 v_decision,
                 command_file,
+                fail_config_prover,
             ) => {
-                let args = vec![
+                let mut args = vec![
                     "prover-get-hashes-for-round".to_string(),
                     "--pdf".to_string(),
                     pdf.clone(),
@@ -93,6 +112,12 @@ impl DispatcherMessage for EmulatorJobType {
                     "--command-file".to_string(),
                     command_file.clone(),
                 ];
+
+                if let Some(fcp) = fail_config_prover {
+                    args.push("--fail-config-prover".to_string());
+                    args.push(fcp.to_string());
+                }
+
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
             EmulatorJobType::VerifierChooseSegment(
@@ -101,6 +126,7 @@ impl DispatcherMessage for EmulatorJobType {
                 round_number,
                 hashes,
                 command_file,
+                fail_config_verifier,
             ) => {
                 let mut args = vec![
                     "verifier-choose-segment".to_string(),
@@ -114,6 +140,11 @@ impl DispatcherMessage for EmulatorJobType {
                     command_file.clone(),
                 ];
 
+                if let Some(fcv) = fail_config_verifier {
+                    args.push("--fail-config-verifier".to_string());
+                    args.push(fcv.to_string());
+                }
+
                 // Extend with multiple --hashes flags
                 for i in hashes {
                     args.push("--hashes".to_string());
@@ -122,8 +153,14 @@ impl DispatcherMessage for EmulatorJobType {
 
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
-            EmulatorJobType::ProverFinalTrace(pdf, checkpoint_prover, v_decision, command_file) => {
-                let args = vec![
+            EmulatorJobType::ProverFinalTrace(
+                pdf,
+                checkpoint_prover,
+                v_decision,
+                command_file,
+                fail_config_prover,
+            ) => {
+                let mut args = vec![
                     "prover-final-trace".to_string(),
                     "--pdf".to_string(),
                     pdf.clone(),
@@ -134,6 +171,12 @@ impl DispatcherMessage for EmulatorJobType {
                     "--command-file".to_string(),
                     command_file.clone(),
                 ];
+
+                if let Some(fcp) = fail_config_prover {
+                    args.push("--fail-config-prover".to_string());
+                    args.push(fcp.to_string());
+                }
+
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
             EmulatorJobType::VerifierChooseChallenge(
@@ -141,8 +184,9 @@ impl DispatcherMessage for EmulatorJobType {
                 checkpoint_verifier,
                 prover_final_trace,
                 command_file,
+                fail_config_verifier,
             ) => {
-                let args = vec![
+                let mut args = vec![
                     "verifier-choose-challenge".to_string(),
                     "--pdf".to_string(),
                     pdf.clone(),
@@ -154,6 +198,11 @@ impl DispatcherMessage for EmulatorJobType {
                     command_file.clone(),
                 ];
 
+                if let Some(fcv) = fail_config_verifier {
+                    args.push("--fail-config-verifier".to_string());
+                    args.push(fcv.to_string());
+                }
+
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
         }
@@ -162,17 +211,21 @@ impl DispatcherMessage for EmulatorJobType {
     fn message_type(&self) -> String {
         let msg_type = match self {
             EmulatorJobType::Execute(_, _) => "ExecuteResult",
-            EmulatorJobType::ProverExecute(_, _, _, _) => "ProverExecuteResult",
-            EmulatorJobType::VerifierCheckExecution(_, _, _, _, _, _) => {
+            EmulatorJobType::ProverExecute(_, _, _, _, _) => "ProverExecuteResult",
+            EmulatorJobType::VerifierCheckExecution(_, _, _, _, _, _, _) => {
                 "VerifierCheckExecutionResult"
             }
 
-            EmulatorJobType::ProverGetHashesForRound(_, _, _, _, _) => {
+            EmulatorJobType::ProverGetHashesForRound(_, _, _, _, _, _) => {
                 "ProverGetHashesForRoundResult"
             }
-            EmulatorJobType::VerifierChooseSegment(_, _, _, _, _) => "VerifierChooseSegmentResult",
-            EmulatorJobType::ProverFinalTrace(_, _, _, _) => "ProverFinalTraceResult",
-            EmulatorJobType::VerifierChooseChallenge(_, _, _, _) => "VerifierChooseChallengeResult",
+            EmulatorJobType::VerifierChooseSegment(_, _, _, _, _, _) => {
+                "VerifierChooseSegmentResult"
+            }
+            EmulatorJobType::ProverFinalTrace(_, _, _, _, _) => "ProverFinalTraceResult",
+            EmulatorJobType::VerifierChooseChallenge(_, _, _, _, _) => {
+                "VerifierChooseChallengeResult"
+            }
         };
         msg_type.to_string()
     }
@@ -181,13 +234,34 @@ impl DispatcherMessage for EmulatorJobType {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum EmulatorJobType {
     //TODO: add Force and FailConfiguration to each one
-    Execute(String, String),                        // elf path, command_file
-    ProverExecute(String, Vec<u8>, String, String), // yaml path, inputs, checkpoint path, command_file
-    VerifierCheckExecution(String, Vec<u8>, String, u64, String, String), // yaml path, inputs, checkpoint path, claim_last_step, claim_last_hash, command_file
-    ProverGetHashesForRound(String, String, u8, u32, String), // pdf, checkpoint_prover_path, round_number, v_decision, command_file
-    VerifierChooseSegment(String, String, u8, Vec<String>, String), // pdf, checkpoint_verifier_path, round_number, hashes, command_file
-    ProverFinalTrace(String, String, u32, String), // pdf, checkpoint_prover_path, v_decision, command_file
-    VerifierChooseChallenge(String, String, TraceRWStep, String), // pdf, checkpoint_verifier_path, prover_final_trace, command_file
+    Execute(String, String), // elf path, command_file
+    ProverExecute(String, Vec<u8>, String, String, Option<FailConfiguration>), // yaml path, inputs, checkpoint path, command_file, fail_config_prover
+    VerifierCheckExecution(
+        String,
+        Vec<u8>,
+        String,
+        u64,
+        String,
+        String,
+        Option<FailConfiguration>,
+    ), // yaml path, inputs, checkpoint path, claim_last_step, claim_last_hash, command_file, fail_config_verifier
+    ProverGetHashesForRound(String, String, u8, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, round_number, v_decision, command_file, fail_config_prover
+    VerifierChooseSegment(
+        String,
+        String,
+        u8,
+        Vec<String>,
+        String,
+        Option<FailConfiguration>,
+    ), // pdf, checkpoint_verifier_path, round_number, hashes, command_file, fail_config_verifier
+    ProverFinalTrace(String, String, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, v_decision, command_file, fail_config_prover
+    VerifierChooseChallenge(
+        String,
+        String,
+        TraceRWStep,
+        String,
+        Option<FailConfiguration>,
+    ), // pdf, checkpoint_verifier_path, prover_final_trace, command_file, fail_config_verifier
 }
 
 impl EmulatorJobType {

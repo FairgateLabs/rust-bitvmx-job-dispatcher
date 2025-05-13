@@ -7,6 +7,7 @@ mod emulator {
     use bitvmx_cpu_definitions::challenge::EmulatorResultType;
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
+    use emulator::executor::utils::FailConfiguration;
     use std::{fs, path::Path, thread::sleep, time::Duration};
 
     // To make this example work, you need to:
@@ -27,6 +28,9 @@ mod emulator {
         let checkpoint_verifier_path = "temp-runs/challenge/42/verifier/".to_string();
         let commands_file = "temp-runs/commands.json".to_string();
 
+        let fail_config_prover = Some(FailConfiguration::new_fail_execute(1));
+        let fail_config_verifier = Some(FailConfiguration::new_fail_hash(1));
+
         for path in &[
             checkpoint_prover_path.clone(),
             checkpoint_verifier_path.clone(),
@@ -43,6 +47,7 @@ mod emulator {
                 input.clone(),
                 checkpoint_prover_path.clone(),
                 commands_file.clone(),
+                fail_config_prover.clone(),
             ),
         })?;
         channel.send(10, msg)?;
@@ -66,6 +71,7 @@ mod emulator {
                 step,
                 hash,
                 commands_file.clone(),
+                fail_config_verifier.clone(),
             ),
         })?;
         channel.send(10, msg)?;
@@ -87,15 +93,16 @@ mod emulator {
                     round,
                     v_decision,
                     commands_file.clone(),
+                    fail_config_prover.clone(),
                 ),
             })?;
             channel.send(10, msg)?;
 
             let (prover_hashes_result, job_id) =
                 wait_for_result(&channel, "ProverGetHashesForRoundResult", 10, 1)?;
-            let hashes =
+            let (hashes, mut my_round): (Vec<String>, u8) =
                 EmulatorResultType::from_value(prover_hashes_result)?.as_prover_hashes()?;
-            println!("✅ Got prover hashes: {:?}", hashes);
+            println!("✅ Got prover hashes: {:?}, round: {:?}", hashes, my_round);
             println!("with job_id {}", job_id);
 
             let msg = serde_json::to_string(&DispatcherJob {
@@ -106,15 +113,19 @@ mod emulator {
                     round,
                     hashes,
                     commands_file.clone(),
+                    fail_config_verifier.clone(),
                 ),
             })?;
             channel.send(10, msg)?;
 
             let (verifier_choose_segment_result, job_id) =
                 wait_for_result(&channel, "VerifierChooseSegmentResult", 10, 1)?;
-            v_decision =
+            (v_decision, my_round) =
                 EmulatorResultType::from_value(verifier_choose_segment_result)?.as_v_decision()?;
-            println!("✅ Got verifier choose segment: v_decision {}", v_decision);
+            println!(
+                "✅ Got verifier choose segment: v_decision {}, round {}",
+                v_decision, my_round
+            );
             println!("with job_id {}", job_id);
         }
 
@@ -125,6 +136,7 @@ mod emulator {
                 checkpoint_prover_path.clone(),
                 v_decision + 1,
                 commands_file.clone(),
+                fail_config_prover.clone(),
             ),
         })?;
         channel.send(10, msg)?;
@@ -142,6 +154,7 @@ mod emulator {
                 checkpoint_verifier_path.clone(),
                 final_trace,
                 commands_file.clone(),
+                fail_config_verifier.clone(),
             ),
         })?;
         channel.send(10, msg)?;
