@@ -5,7 +5,7 @@ use bitvmx_cpu_definitions::{
 use bitvmx_job_dispatcher::{
     dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
 };
-use emulator::executor::utils::FailConfiguration;
+use emulator::{decision::challenge::ForceCondition, executor::utils::FailConfiguration};
 use serde::{Deserialize, Serialize};
 
 //windows
@@ -65,6 +65,7 @@ impl DispatcherMessage for EmulatorJobType {
                 claim_last_step,
                 claim_last_hash,
                 command_file,
+                force,
                 fail_config_verifier,
             ) => {
                 let hex_input = hex::encode(input);
@@ -87,6 +88,12 @@ impl DispatcherMessage for EmulatorJobType {
                 if let Some(fcv) = fail_config_verifier {
                     args.push("--fail-config-verifier".to_string());
                     args.push(fcv.to_string());
+                }
+
+                if let Some(_force) = force {
+                    //TODO: fix serialization
+                    args.push("--force".to_string());
+                    args.push("allways".to_string());
                 }
 
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
@@ -212,7 +219,7 @@ impl DispatcherMessage for EmulatorJobType {
         let msg_type = match self {
             EmulatorJobType::Execute(_, _) => "ExecuteResult",
             EmulatorJobType::ProverExecute(_, _, _, _, _) => "ProverExecuteResult",
-            EmulatorJobType::VerifierCheckExecution(_, _, _, _, _, _, _) => {
+            EmulatorJobType::VerifierCheckExecution(_, _, _, _, _, _, _, _) => {
                 "VerifierCheckExecutionResult"
             }
 
@@ -243,6 +250,7 @@ pub enum EmulatorJobType {
         u64,
         String,
         String,
+        Option<ForceCondition>,
         Option<FailConfiguration>,
     ), // yaml path, inputs, checkpoint path, claim_last_step, claim_last_hash, command_file, fail_config_verifier
     ProverGetHashesForRound(String, String, u8, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, round_number, v_decision, command_file, fail_config_prover

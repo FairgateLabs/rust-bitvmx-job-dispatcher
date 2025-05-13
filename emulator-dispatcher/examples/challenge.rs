@@ -71,6 +71,7 @@ mod emulator {
                 step,
                 hash,
                 commands_file.clone(),
+                None,
                 fail_config_verifier.clone(),
             ),
         })?;
