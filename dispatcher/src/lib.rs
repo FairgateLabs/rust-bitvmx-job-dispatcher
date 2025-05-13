@@ -62,8 +62,9 @@ where
         }
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self) -> bool {
         let msg = self.channel.recv();
+        let mut job_completed = false;
         match msg {
             Ok(msg) => {
                 if let Some(msg) = msg {
@@ -80,35 +81,40 @@ where
         if !self.workers.is_empty() {
             self.workers
                 .retain_mut(|(child, id, context)| match child.try_wait() {
-                    Ok(Some(status)) => match fs::read_to_string(&context.command_file) {
-                        Ok(buf) => {
-                            info!("Worker output from file: {}", buf);
-                            info!("Worker exited with status: {:?}", status);
+                    Ok(Some(status)) => {
+                        job_completed = true;
+                        match fs::read_to_string(&context.command_file) {
+                            Ok(buf) => {
+                                info!("Worker output from file: {}", buf);
+                                info!("Worker exited with status: {:?}", status);
 
-                            if let Some(result) =
-                                self.dispatcher.process_result(&context.job_id, buf, status)
-                            {
-                                if let Err(e) = self.channel.send(
-                                    *id,
-                                    ResultMessage::new(context.job_id.clone(), result).to_string(),
-                                ) {
-                                    error!("Failed to send result: {}", e);
+                                if let Some(result) =
+                                    self.dispatcher.process_result(&context.job_id, buf, status)
+                                {
+                                    if let Err(e) = self.channel.send(
+                                        *id,
+                                        ResultMessage::new(context.job_id.clone(), result)
+                                            .to_string(),
+                                    ) {
+                                        error!("Failed to send result: {}", e);
+                                    }
                                 }
+                                false
                             }
-                            false
-                        }
-                        Err(e) => {
-                            error!("Failed to read file {}: {}", context.command_file, e);
-                            if let Err(e) =
-                                self.channel.send(*id, "Failed to read file".to_string())
-                            {
-                                error!("Failed to send error message: {}", e);
+                            Err(e) => {
+                                error!("Failed to read file {}: {}", context.command_file, e);
+                                if let Err(e) =
+                                    self.channel.send(*id, "Failed to read file".to_string())
+                                {
+                                    error!("Failed to send error message: {}", e);
+                                }
+                                false
                             }
-                            false
                         }
-                    },
+                    }
                     Ok(None) => true,
                     Err(e) => {
+                        job_completed = true;
                         error!("Error checking worker: {}", e);
                         if let Err(e) = self
                             .channel
@@ -120,6 +126,7 @@ where
                     }
                 });
         }
+        job_completed
     }
 }
 
