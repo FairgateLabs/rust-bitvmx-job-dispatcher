@@ -31,9 +31,18 @@ fn init_trace() -> Result<(), anyhow::Error> {
 fn main() -> Result<(), anyhow::Error> {
     init_trace()?;
 
-    info!("Starting...");
+    let mut args = std::env::args();
+    let _exe = args.next(); // skip executable name
+    let port_str = args
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Port number argument required"))?;
+    let port: u16 = port_str
+        .parse()
+        .map_err(|_| anyhow::anyhow!("Invalid port number"))?;
 
-    let config = BrokerConfig::new(10000, Some(IpAddr::from([127, 0, 0, 1])));
+    info!("Starting on port {}...", port);
+
+    let config = BrokerConfig::new(port, Some(IpAddr::from([127, 0, 0, 1])));
     let channel = DualChannel::new(&config, 10);
     let check_interval = std::time::Duration::from_secs(1);
 
