@@ -17,6 +17,7 @@ emulator = { path = "../../BitVMX-CPU/emulator" }                               
 hex = "0.4"
 bitvmx-job-dispatcher-types = { path = "../jobtypes", features = ["emulator"] }
 bitvmx-job-dispatcher = { path = "../dispatcher" }
+clap = { version = "4.5.32", features = ["derive"] }
 
 [dev-dependencies]
 config = "0.15.11"
