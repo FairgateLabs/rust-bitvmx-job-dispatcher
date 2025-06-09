@@ -1,5 +1,5 @@
 use std::{
-    net::IpAddr,
+    net::{IpAddr, Ipv4Addr},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -11,10 +11,21 @@ use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
 
 use bitvmx_job_dispatcher::dispatcher_loop;
 use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
+use clap::{command, Parser};
 use tracing::info;
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
+
+#[derive(Parser)]
+#[command(about = "Emulator Dispatcher CLI", long_about = None)]
+#[command(arg_required_else_help = true)]
+struct Command {
+    #[arg(long, default_value = "127.0.0.1")]
+    ip: String,
+    #[arg(long)]
+    port: u16
+}
 
 fn init_trace() -> Result<(), anyhow::Error> {
     let filter = EnvFilter::builder()
@@ -30,10 +41,15 @@ fn init_trace() -> Result<(), anyhow::Error> {
 }
 fn main() -> Result<(), anyhow::Error> {
     init_trace()?;
+    let args = Command::parse();
 
     info!("Starting...");
 
-    let config = BrokerConfig::new(10000, Some(IpAddr::from([127, 0, 0, 1])));
+    let ip = args.ip.parse::<Ipv4Addr>()
+        .map(|ip| ip.octets())
+        .expect("Invalid IPv4 address");
+
+    let config: BrokerConfig = BrokerConfig::new(args.port, Some(IpAddr::from(ip)));
     let channel = DualChannel::new(&config, 10);
     let check_interval = std::time::Duration::from_secs(1);
 
