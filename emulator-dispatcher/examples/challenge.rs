@@ -1,25 +1,29 @@
 use tracing::error;
 
 mod emulator {
-
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_cpu_definitions::challenge::EmulatorResultType;
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
     use emulator::executor::utils::FailConfiguration;
-    use std::{fs, path::Path, thread::sleep, time::Duration};
+    use std::{fs, net::IpAddr, path::Path, thread::sleep, time::Duration};
+
+    const EMULATOR_ID: u32 = 1000;
 
     // To make this example work, you need to:
     // 1. go to ../BitVMX-CPU and run cargo build --release
     // 2. run the server example first (from bitvmx-broker).
     //      cargo run --release --example server -- --port 10000
     // 3. Then run the job-dispatcher
-    //      cargo run --release
+    //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000
     // 4. Then trigger one execution
     //      cargo run --release --example challenge --features "emulator"
     pub(crate) fn run_job() -> Result<(), anyhow::Error> {
-        let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
+        let channel = DualChannel::new(
+            &BrokerConfig::new(10000, Some(IpAddr::from([127, 0, 0, 1]))),
+            2,
+        );
 
         let input = 0;
         let input = vec![17, 17, 17, input];
@@ -28,8 +32,10 @@ mod emulator {
         let checkpoint_verifier_path = "temp-runs/challenge/42/verifier/".to_string();
         let commands_file = "temp-runs/commands.json".to_string();
 
-        let fail_config_prover = Some(FailConfiguration::new_fail_execute(1));
-        let fail_config_verifier = Some(FailConfiguration::new_fail_hash(1));
+        let fail_config_prover = Some(FailConfiguration::new_fail_hash(100));
+        let fail_config_verifier = None;
+        let force_condition = emulator::decision::challenge::ForceCondition::ValidInputStepAndHash;
+        let force_challenge = emulator::decision::challenge::ForceChallenge::No;
 
         for path in &[
             checkpoint_prover_path.clone(),
@@ -50,7 +56,7 @@ mod emulator {
                 fail_config_prover.clone(),
             ),
         })?;
-        channel.send(10, msg)?;
+        channel.send(EMULATOR_ID, msg)?;
 
         let (prover_result, job_id) = wait_for_result(&channel, "ProverExecuteResult", 10, 1)?;
         let (step, hash, halt) =
@@ -71,11 +77,11 @@ mod emulator {
                 step,
                 hash,
                 commands_file.clone(),
-                emulator::decision::challenge::ForceCondition::Allways,
+                force_condition,
                 fail_config_verifier.clone(),
             ),
         })?;
-        channel.send(10, msg)?;
+        channel.send(EMULATOR_ID, msg)?;
 
         let (verifier_result, job_id) =
             wait_for_result(&channel, "VerifierCheckExecutionResult", 10, 1)?;
@@ -97,7 +103,7 @@ mod emulator {
                     fail_config_prover.clone(),
                 ),
             })?;
-            channel.send(10, msg)?;
+            channel.send(EMULATOR_ID, msg)?;
 
             let (prover_hashes_result, job_id) =
                 wait_for_result(&channel, "ProverGetHashesForRoundResult", 10, 1)?;
@@ -117,7 +123,7 @@ mod emulator {
                     fail_config_verifier.clone(),
                 ),
             })?;
-            channel.send(10, msg)?;
+            channel.send(EMULATOR_ID, msg)?;
 
             let (verifier_choose_segment_result, job_id) =
                 wait_for_result(&channel, "VerifierChooseSegmentResult", 10, 1)?;
@@ -140,7 +146,7 @@ mod emulator {
                 fail_config_prover.clone(),
             ),
         })?;
-        channel.send(10, msg)?;
+        channel.send(EMULATOR_ID, msg)?;
 
         let (final_trace, job_id) = wait_for_result(&channel, "ProverFinalTraceResult", 10, 1)?;
         let final_trace = EmulatorResultType::from_value(final_trace)?.as_final_trace()?;
@@ -156,10 +162,10 @@ mod emulator {
                 final_trace,
                 commands_file.clone(),
                 fail_config_verifier.clone(),
-                emulator::decision::challenge::ForceChallenge::No,
+                force_challenge,
             ),
         })?;
-        channel.send(10, msg)?;
+        channel.send(EMULATOR_ID, msg)?;
 
         let (result, job_id) = wait_for_result(&channel, "VerifierChooseChallengeResult", 10, 1)?;
         let challenge = EmulatorResultType::from_value(result)?.as_challenge()?;
