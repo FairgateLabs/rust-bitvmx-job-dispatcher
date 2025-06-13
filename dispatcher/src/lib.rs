@@ -68,6 +68,7 @@ where
         match msg {
             Ok(msg) => {
                 if let Some(msg) = msg {
+                    info!("Received message: {:?}", msg);
                     if let Some((child, context)) = process_msg(&mut self.dispatcher, &msg.0) {
                         self.workers.push((child, msg.1, context));
                     } else {
