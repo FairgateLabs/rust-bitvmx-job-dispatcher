@@ -71,7 +71,7 @@ mod emulator {
                 step,
                 hash,
                 commands_file.clone(),
-                None,
+                emulator::decision::challenge::ForceCondition::Allways,
                 fail_config_verifier.clone(),
             ),
         })?;
@@ -156,6 +156,7 @@ mod emulator {
                 final_trace,
                 commands_file.clone(),
                 fail_config_verifier.clone(),
+                emulator::decision::challenge::ForceChallenge::No,
             ),
         })?;
         channel.send(10, msg)?;
