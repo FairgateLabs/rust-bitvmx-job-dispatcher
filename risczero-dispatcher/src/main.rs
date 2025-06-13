@@ -24,7 +24,7 @@ struct Command {
     #[arg(long, default_value = "127.0.0.1")]
     ip: String,
     #[arg(long)]
-    port: u16
+    port: u16,
 }
 
 fn init_trace() -> Result<(), anyhow::Error> {
@@ -39,18 +39,22 @@ fn init_trace() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
+
+const PROVER_ID: u32 = 2000;
 fn main() -> Result<(), anyhow::Error> {
     init_trace()?;
     let args = Command::parse();
 
     info!("Starting...");
 
-    let ip = args.ip.parse::<Ipv4Addr>()
+    let ip = args
+        .ip
+        .parse::<Ipv4Addr>()
         .map(|ip| ip.octets())
         .expect("Invalid IPv4 address");
 
     let config = BrokerConfig::new(args.port, Some(IpAddr::from(ip)));
-    let channel = DualChannel::new(&config, 10);
+    let channel = DualChannel::new(&config, PROVER_ID);
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));
