@@ -5,7 +5,10 @@ use bitvmx_cpu_definitions::{
 use bitvmx_job_dispatcher::{
     dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
 };
-use emulator::{decision::challenge::ForceCondition, executor::utils::FailConfiguration};
+use emulator::{
+    decision::challenge::{ForceChallenge, ForceCondition},
+    executor::utils::FailConfiguration,
+};
 use serde::{Deserialize, Serialize};
 
 //windows
@@ -90,11 +93,8 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcv.to_string());
                 }
 
-                if let Some(_force) = force {
-                    //TODO: fix serialization
-                    args.push("--force".to_string());
-                    args.push("allways".to_string());
-                }
+                args.push("--force".to_string());
+                args.push(force.to_string());
 
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
@@ -192,6 +192,7 @@ impl DispatcherMessage for EmulatorJobType {
                 prover_final_trace,
                 command_file,
                 fail_config_verifier,
+                force,
             ) => {
                 let mut args = vec![
                     "verifier-choose-challenge".to_string(),
@@ -203,6 +204,8 @@ impl DispatcherMessage for EmulatorJobType {
                     serde_json::to_string(prover_final_trace)?,
                     "--command-file".to_string(),
                     command_file.clone(),
+                    "--force".to_string(),
+                    force.to_string(),
                 ];
 
                 if let Some(fcv) = fail_config_verifier {
@@ -230,7 +233,7 @@ impl DispatcherMessage for EmulatorJobType {
                 "VerifierChooseSegmentResult"
             }
             EmulatorJobType::ProverFinalTrace(_, _, _, _, _) => "ProverFinalTraceResult",
-            EmulatorJobType::VerifierChooseChallenge(_, _, _, _, _) => {
+            EmulatorJobType::VerifierChooseChallenge(_, _, _, _, _, _) => {
                 "VerifierChooseChallengeResult"
             }
         };
@@ -250,7 +253,7 @@ pub enum EmulatorJobType {
         u64,
         String,
         String,
-        Option<ForceCondition>,
+        ForceCondition,
         Option<FailConfiguration>,
     ), // yaml path, inputs, checkpoint path, claim_last_step, claim_last_hash, command_file, fail_config_verifier
     ProverGetHashesForRound(String, String, u8, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, round_number, v_decision, command_file, fail_config_prover
@@ -269,7 +272,8 @@ pub enum EmulatorJobType {
         TraceRWStep,
         String,
         Option<FailConfiguration>,
-    ), // pdf, checkpoint_verifier_path, prover_final_trace, command_file, fail_config_verifier
+        ForceChallenge,
+    ), // pdf, checkpoint_verifier_path, prover_final_trace, command_file, fail_config_verifier, force
 }
 
 impl EmulatorJobType {
