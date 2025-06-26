@@ -6,6 +6,7 @@ mod prover {
     use std::{thread::sleep, time::Duration};
     use zk_result::ResultType as ProverResultType;
 
+const PROVER_ID: u32 = 2000;
     // To make this example work, you need to:
     // 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
     //    until the step "Template Setup"
@@ -24,9 +25,10 @@ mod prover {
                 50_u32.to_be_bytes().to_vec(),
                 "./a.elf".to_string(),
                 "./output.json".to_string(),
+                "./stark_proof.bin".to_string(),
             ),
         })?;
-        channel.send(10, msg)?;
+        channel.send(PROVER_ID, msg)?;
 
         for _ in 0..1000 {
             if let Some((msg, _from)) = channel.recv()? {
