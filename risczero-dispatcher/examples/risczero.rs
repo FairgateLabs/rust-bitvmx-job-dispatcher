@@ -24,6 +24,7 @@ mod prover {
                 50_u32.to_be_bytes().to_vec(),
                 "./a.elf".to_string(),
                 "./output.json".to_string(),
+                "./stark_proof.bin".to_string(),
             ),
         })?;
         channel.send(10, msg)?;

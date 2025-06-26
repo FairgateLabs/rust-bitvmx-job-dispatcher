@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 impl DispatcherMessage for ProverJobType {
     fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
         match self {
-            ProverJobType::Prove(input_value, _elf, json) => {
+            ProverJobType::Prove(input_value, _elf, json, stark_proof) => {
                 let input_value = u32::from_be_bytes(input_value.as_slice().try_into().unwrap());
                 let cmd = "sh".to_string();
                 let args = vec![
@@ -14,12 +14,11 @@ impl DispatcherMessage for ProverJobType {
                     format!(
                         "../rust-bitvmx-zk-proof/target/release/host prove-stark \
                         --input {} \
-                        --output \
-                        ./stark-proof.bin \
+                        --output {stark_proof} \
                         --json {} \
                         && ../rust-bitvmx-zk-proof/target/release/host \
                         prove-snark \
-                        --input ./stark-proof.bin \
+                        --input {stark_proof} \
                         --json {}",
                         input_value, json, json
                     ),
@@ -31,12 +30,12 @@ impl DispatcherMessage for ProverJobType {
 
     fn message_type(&self) -> String {
         match self {
-            ProverJobType::Prove(..) => "ProveSnarkResult".to_string(),
+            ProverJobType::Prove(..) => "ProveResult".to_string(),
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProverJobType {
-    Prove(Vec<u8>, String, String),
+    Prove(Vec<u8>, String, String, String),
 }
