@@ -13,14 +13,14 @@ impl DispatcherMessage for ProverJobType {
                     "-c".to_string(),
                     format!(
                         "../rust-bitvmx-zk-proof/target/release/host prove-stark \
-                        --input {} \
+                        --input {input_value} \
                         --output {stark_proof} \
-                        --json {} \
+                        --json {json} \
                         && ../rust-bitvmx-zk-proof/target/release/host \
                         prove-snark \
                         --input {stark_proof} \
-                        --json {}",
-                        input_value, json, json
+                        --json {json} \
+                        --json-input {json}"
                     ),
                 ];
                 Ok((cmd, args, json.clone()))
