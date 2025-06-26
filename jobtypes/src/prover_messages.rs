@@ -31,7 +31,7 @@ impl DispatcherMessage for ProverJobType {
 
     fn message_type(&self) -> String {
         match self {
-            ProverJobType::Prove(..) => "ProveResult".to_string(),
+            ProverJobType::Prove(..) => "ProveSnarkResult".to_string(),
         }
     }
 }

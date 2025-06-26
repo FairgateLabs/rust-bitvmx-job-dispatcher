@@ -76,7 +76,7 @@ where
                 if let Some(json_result) = Self::extract_structured_json(&expected_type, &result) {
                     return Some(json_result);
                 }
-                // No structured result found
+                error!("No structured result found");
                 None
             } else {
                 // Process exited with error
