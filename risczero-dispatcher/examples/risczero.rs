@@ -24,8 +24,7 @@ const PROVER_ID: u32 = 2000;
             job_type: ProverJobType::Prove(
                 50_u32.to_be_bytes().to_vec(),
                 "./a.elf".to_string(),
-                "./output.json".to_string(),
-                "./stark_proof.bin".to_string(),
+                ".".to_string(),
             ),
         })?;
         channel.send(PROVER_ID, msg)?;

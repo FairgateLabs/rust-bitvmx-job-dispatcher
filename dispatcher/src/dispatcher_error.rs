@@ -10,4 +10,7 @@ pub enum DispatcherError {
 
     #[error("Job id already exists")]
     JobIdAlreadyExists,
+
+    #[error("IO error {0}")]
+    IoError(#[from] std::io::Error),
 }
