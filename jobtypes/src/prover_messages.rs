@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use bitvmx_job_dispatcher::{
     dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
 };
