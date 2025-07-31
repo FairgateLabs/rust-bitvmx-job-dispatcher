@@ -72,7 +72,6 @@ where
         if let Some(msg_type) = self.jobs.remove(id) {
             if status.success() {
                 let expected_type = msg_type.message_type();
-
                 if let Some(json_result) = Self::extract_structured_json(&expected_type, &result) {
                     return Some(json_result);
                 }
