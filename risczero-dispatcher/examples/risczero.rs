@@ -1,24 +1,49 @@
 mod prover {
-    use bitvmx_broker::channel::channel::DualChannel;
+    use bitvmx_broker::identification::allow_list::AllowList;
+    use bitvmx_broker::identification::identifier::Identifier;
     use bitvmx_broker::rpc::BrokerConfig;
+    use bitvmx_broker::{channel::channel::DualChannel, rpc::tls_helper::Cert};
     use bitvmx_job_dispatcher::dispatcher_job::DispatcherJob;
     use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
-    use std::{thread::sleep, time::Duration};
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::{fs, thread::sleep, time::Duration};
     use zk_result::ResultType as ProverResultType;
 
-const PROVER_ID: u32 = 2000;
     // To make this example work, you need to:
     // 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
     //    until the step "Template Setup"
     // 3. run the server example first.
-    //      cargo run --release --example server -- --port 10000
+    //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1 --dest-id 2
     // 4. Then run the job-dispatcher
     //      cargo run --release --features "prover"
     // 5. Then trigger one execution
     //      cargo run --release --example risczero --features "prover"
 
     pub(crate) fn run_proof() -> Result<(), anyhow::Error> {
-        let channel = DualChannel::new(&BrokerConfig::new(10000, None), 2);
+        let privk = fs::read_to_string("../rust-bitvmx-broker/certs/services.key")?;
+        let my_id = 2;
+        let dest_id = 1;
+        let cert = Cert::new_with_privk(&privk)?;
+        let allow_list =
+            AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
+        let emulator_id = Identifier {
+            pubkey_hash: cert.get_pubk_hash()?,
+            id: Some(dest_id),
+            address: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000),
+        };
+
+        let channel = DualChannel::new(
+            &BrokerConfig::new(
+                10000,
+                Some(IpAddr::from([127, 0, 0, 1])),
+                cert.get_pubk_hash()?,
+                Some(dest_id),
+            )?,
+            cert,
+            Some(my_id),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11000),
+            allow_list,
+        )?;
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
             job_type: ProverJobType::Prove(
@@ -27,7 +52,7 @@ const PROVER_ID: u32 = 2000;
                 ".".to_string(),
             ),
         })?;
-        channel.send(PROVER_ID, msg)?;
+        channel.send(Some(emulator_id), msg)?;
 
         for _ in 0..1000 {
             if let Some((msg, _from)) = channel.recv()? {

@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use bitvmx_broker::channel::channel::DualChannel;
+use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
 
 use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
@@ -44,7 +44,7 @@ where
 }
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     channel: DualChannel,
-    workers: Vec<(Child, u32, JobContext)>,
+    workers: Vec<(Child, Identifier, JobContext)>,
     dispatcher: Dispatcher<T>,
 }
 
@@ -92,7 +92,7 @@ where
                                     self.dispatcher.process_result(&context.job_id, buf, status)
                                 {
                                     if let Err(e) = self.channel.send(
-                                        *id,
+                                        Some(id.clone()),
                                         ResultMessage::new(context.job_id.clone(), result)
                                             .to_string(),
                                     ) {
@@ -103,8 +103,9 @@ where
                             }
                             Err(e) => {
                                 error!("Failed to read file {}: {}", context.command_file, e);
-                                if let Err(e) =
-                                    self.channel.send(*id, "Failed to read file".to_string())
+                                if let Err(e) = self
+                                    .channel
+                                    .send(Some(id.clone()), "Failed to read file".to_string())
                                 {
                                     error!("Failed to send error message: {}", e);
                                 }
@@ -118,7 +119,7 @@ where
                         error!("Error checking worker: {}", e);
                         if let Err(e) = self
                             .channel
-                            .send(*id, "Error checking worker status".to_string())
+                            .send(Some(id.clone()), "Error checking worker status".to_string())
                         {
                             error!("Failed to send error message: {}", e);
                         }

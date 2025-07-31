@@ -1,5 +1,6 @@
 use std::{
-    net::{IpAddr, Ipv4Addr},
+    fs,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -7,7 +8,11 @@ use std::{
 };
 
 use anyhow::Result;
-use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
+use bitvmx_broker::{
+    channel::channel::DualChannel,
+    identification::allow_list::AllowList,
+    rpc::{tls_helper::Cert, BrokerConfig},
+};
 
 use bitvmx_job_dispatcher::dispatcher_loop;
 use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
@@ -25,6 +30,12 @@ struct Command {
     ip: String,
     #[arg(long)]
     port: u16,
+
+    #[arg(long, default_value = "1")]
+    my_id: u8,
+
+    #[arg(long, default_value = "2")]
+    dest_id: u8,
 }
 
 fn init_trace() -> Result<(), anyhow::Error> {
@@ -39,7 +50,7 @@ fn init_trace() -> Result<(), anyhow::Error> {
 
     Ok(())
 }
-const EMULATOR_ID: u32 = 1000;
+
 fn main() -> Result<(), anyhow::Error> {
     init_trace()?;
     let args = Command::parse();
@@ -52,8 +63,23 @@ fn main() -> Result<(), anyhow::Error> {
         .map(|ip| ip.octets())
         .expect("Invalid IPv4 address");
 
-    let config: BrokerConfig = BrokerConfig::new(args.port, Some(IpAddr::from(ip)));
-    let channel = DualChannel::new(&config, EMULATOR_ID);
+    //TODO: obtain these values from a config file
+    let my_id = args.my_id;
+    let dest_id = args.dest_id;
+    let privk = fs::read_to_string("../rust-bitvmx-broker/certs/services.key")?;
+    let my_address = SocketAddr::new(IpAddr::from(ip), args.port);
+
+    let cert = Cert::new_with_privk(&privk)?;
+    let allow_list =
+        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
+
+    let config: BrokerConfig = BrokerConfig::new(
+        args.port,
+        Some(IpAddr::from(ip)),
+        cert.get_pubk_hash()?,
+        Some(dest_id),
+    )?;
+    let channel = DualChannel::new(&config, cert, Some(my_id), my_address, allow_list)?;
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));
