@@ -1,10 +1,11 @@
 use std::env;
 use tokio::fs::File;
 use aws_config::{meta::region::RegionProviderChain, BehaviorVersion, SdkConfig};
-use aws_sdk_ec2::{Client as EC2Client, Error as EC2Error};
+use aws_sdk_ec2::{Client as Ec2Client, Error as EC2Error};
 use aws_sdk_ssm::{Client as SsmClient, Error as SsmError};
 use aws_sdk_s3::{Client as S3Client, Error as S3Error};
 
+//TODO: Personalized Errors
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -15,14 +16,47 @@ fn main() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     let (ec2_client, config) = runtime.block_on(create_service()).expect("Failed to run the service");
 
-    let instance_id = "i-087552855f0b1c0f8";
+    let instance_ids = vec!["i-087552855f0b1c0f8".to_string()];
+    let client = SsmClient::new(&config);
+    let mut can_run_command = false;
 
-    println!("Starting instance {}", instance_id);
-    runtime.block_on(start_instance(&ec2_client, instance_id))
+    if instance_ids.is_empty() {
+        panic!("No instance IDs provided");
+    }
+
+    let mut free_instance_id = "";
+    
+    while !can_run_command {
+        for instance_id in &instance_ids {
+            if runtime.block_on(is_instance_running(&ec2_client, instance_id))
+                .expect("Could not check if the instance is running") 
+            {
+                can_run_command = runtime.block_on(is_instance_stopped(&ec2_client, instance_id))
+                    .expect("Could not wait until the instance is stopped");
+                
+            } else {
+                can_run_command = true; 
+            }
+
+            if can_run_command {
+                free_instance_id = instance_id;
+                println!("Using instance: {}", free_instance_id);
+                break;
+            }
+        }
+
+        if !can_run_command {
+            println!("Waiting for the instance to be free...");
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        }
+    }
+
+    println!("Starting instance {}", free_instance_id);
+    runtime.block_on(start_instance(&ec2_client, free_instance_id))
         .expect("Could not start the instance");
     println!("Instance started");
 
-    runtime.block_on(send_command(&config, instance_id, args[1].clone()))
+    runtime.block_on(send_command(&client, free_instance_id, args[1].clone()))
         .expect("Could not send the command");
 
     runtime.block_on(download_file(&config))
@@ -30,22 +64,81 @@ fn main() {
 
     println!("File downloaded");
 
-    println!("Stopping instance {}", instance_id);
-    runtime.block_on(stop_instance(&ec2_client, instance_id))
+    println!("Stopping instance {}", free_instance_id);
+    runtime.block_on(stop_instance(&ec2_client, free_instance_id))
         .expect("Could not stop the instance");
     println!("Instance stopped");
 }
 
-async fn create_service() -> Result<(EC2Client, SdkConfig), EC2Error> {
+pub async fn is_instance_stopped(ec2: &Ec2Client, instance_id: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    println!("Checking if instance {} is stopped...", instance_id);
+    let resp = ec2
+        .describe_instances()
+        .instance_ids(instance_id)
+        .send()
+        .await?;
+
+    let state = resp
+        .reservations()
+        .first()
+        .unwrap()
+        .instances()
+        .first()
+        .unwrap()
+        .state();
+
+    match state {
+        Some(s) => {
+            let name = s.name().unwrap().as_str();
+            if name == "stopped" {
+                println!("Instance is stopped, ready to run command");
+                return Ok(true);
+            } else if name == "shutting-down" || name == "terminated" {
+                println!("Instance is shutting down or terminated, cannot run command");
+                return Ok(false);
+            } else {
+                println!("Instance is not stopped yet, current state: {name}");
+                return Ok(false);
+            }
+        }
+
+        None => {
+            println!("Instance state is unknown");
+            return Ok(false);
+        }
+        
+    }
+
+}
+
+async fn is_instance_running(ec2: &Ec2Client, instance_id: &str) -> Result<bool, Box<dyn std::error::Error>> {
+    let resp = ec2
+        .describe_instances()
+        .instance_ids(instance_id)
+        .send()
+        .await?;
+
+    if let Some(reservation) = resp.reservations().first() {
+        if let Some(instance) = reservation.instances().first() {
+            let state = instance.state().unwrap().name().unwrap().as_str();
+            println!("Instance State: {state}");
+            return Ok(state == "running");
+        }
+    }
+
+    Ok(false)
+}
+
+async fn create_service() -> Result<(Ec2Client, SdkConfig), EC2Error> {
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-2");
     let behavior = BehaviorVersion::latest();
     let config = aws_config::defaults(behavior).region(region_provider).load().await;
-    let client = EC2Client::new(&config);
+    let client = Ec2Client::new(&config);
 
     Ok((client, config))
 }
 
-async fn start_instance(client: &EC2Client, instance_id: &str) -> Result<(), EC2Error> {
+async fn start_instance(client: &Ec2Client, instance_id: &str) -> Result<(), EC2Error> {
     client
         .start_instances()
         .instance_ids(instance_id)
@@ -55,7 +148,7 @@ async fn start_instance(client: &EC2Client, instance_id: &str) -> Result<(), EC2
     Ok(())
 }
 
-async fn stop_instance(client: &EC2Client, instance_id: &str) -> Result<(), EC2Error> {
+async fn stop_instance(client: &Ec2Client, instance_id: &str) -> Result<(), EC2Error> {
     client
         .stop_instances()
         .instance_ids(instance_id)
@@ -65,10 +158,8 @@ async fn stop_instance(client: &EC2Client, instance_id: &str) -> Result<(), EC2E
     Ok(())
 }
 
-async fn send_command(config: &SdkConfig, instance_id: &str, zkp_to_run: String) -> Result<(), SsmError> {
-    let client = SsmClient::new(config);
-    let command = "echo 'Hello from Rust SDK' > /tmp/greeting.txt && aws s3 cp /tmp/greeting.txt s3://prueba2025b1/greeting.txt > /tmp/upload.log 2>&1";
-
+async fn send_command(client: &SsmClient, instance_id: &str, zkp_to_run: String) -> Result<(), SsmError> {  
+    let command_to_send = "echo 'Hello from Rust SDK' > /tmp/greeting.txt && aws s3 cp /tmp/greeting.txt s3://prueba2025b1/greeting.txt > /tmp/upload.log 2>&1";
     let command = client
         .send_command()
         .instance_ids(instance_id)
@@ -76,7 +167,7 @@ async fn send_command(config: &SdkConfig, instance_id: &str, zkp_to_run: String)
         .comment("Create file and upload to S3")
         .parameters(
             "commands",
-            vec![command.to_string()]
+            vec![command_to_send.to_string()]
         )
         .send()
         .await?;
