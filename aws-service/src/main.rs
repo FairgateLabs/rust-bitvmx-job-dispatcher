@@ -9,34 +9,28 @@ use aws_sdk_s3::{Client as S3Client, Error as S3Error};
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() > 2 {
+    if args.len() > 3 {
         panic!("Too many arguments")
+    }
+
+    let instance_ids = load_config(args[2].clone());
+    
+    if instance_ids.is_empty() {
+        panic!("No instance IDs provided");
     }
 
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
     let (ec2_client, config) = runtime.block_on(create_service()).expect("Failed to run the service");
 
-    let instance_ids = vec!["i-087552855f0b1c0f8".to_string()];
     let client = SsmClient::new(&config);
     let mut can_run_command = false;
-
-    if instance_ids.is_empty() {
-        panic!("No instance IDs provided");
-    }
 
     let mut free_instance_id = "";
     
     while !can_run_command {
         for instance_id in &instance_ids {
-            if runtime.block_on(is_instance_running(&ec2_client, instance_id))
-                .expect("Could not check if the instance is running") 
-            {
-                can_run_command = runtime.block_on(is_instance_stopped(&ec2_client, instance_id))
-                    .expect("Could not wait until the instance is stopped");
-                
-            } else {
-                can_run_command = true; 
-            }
+            can_run_command = runtime.block_on(is_instance_stopped(&ec2_client, instance_id))
+                .expect("Could not check if the instance is stopped");
 
             if can_run_command {
                 free_instance_id = instance_id;
@@ -111,24 +105,6 @@ pub async fn is_instance_stopped(ec2: &Ec2Client, instance_id: &str) -> Result<b
 
 }
 
-async fn is_instance_running(ec2: &Ec2Client, instance_id: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    let resp = ec2
-        .describe_instances()
-        .instance_ids(instance_id)
-        .send()
-        .await?;
-
-    if let Some(reservation) = resp.reservations().first() {
-        if let Some(instance) = reservation.instances().first() {
-            let state = instance.state().unwrap().name().unwrap().as_str();
-            println!("Instance State: {state}");
-            return Ok(state == "running");
-        }
-    }
-
-    Ok(false)
-}
-
 async fn create_service() -> Result<(Ec2Client, SdkConfig), EC2Error> {
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-2");
     let behavior = BehaviorVersion::latest();
@@ -200,4 +176,20 @@ async fn download_file(config: &SdkConfig) -> Result<(), S3Error> {
     tokio::io::copy(&mut body, &mut file).await.expect("Could not copy the data to the file");
 
     Ok(())
+}
+
+fn load_config(config_path: String) -> Vec<String> {
+    let file = std::fs::File::open(config_path).expect("Could not open config file");
+    let reader = std::io::BufReader::new(file);
+    let config: serde_json::Value = serde_json::from_reader(reader).expect("Could not parse config file");
+
+    if let Some(instance_ids) = config.get("instance_ids") {
+        instance_ids.as_array()
+            .expect("instance_ids should be an array")
+            .iter()
+            .filter_map(|id| id.as_str().map(String::from))
+            .collect()
+    } else {
+        panic!("No instance_ids found in the config file");
+    }
 }
