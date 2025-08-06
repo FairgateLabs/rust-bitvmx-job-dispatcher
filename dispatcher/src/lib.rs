@@ -92,7 +92,7 @@ where
                                     self.dispatcher.process_result(&context.job_id, buf, status)
                                 {
                                     if let Err(e) = self.channel.send(
-                                        Some(id.clone()),
+                                        id.clone(),
                                         ResultMessage::new(context.job_id.clone(), result)
                                             .to_string(),
                                     ) {
@@ -105,7 +105,7 @@ where
                                 error!("Failed to read file {}: {}", context.command_file, e);
                                 if let Err(e) = self
                                     .channel
-                                    .send(Some(id.clone()), "Failed to read file".to_string())
+                                    .send(id.clone(), "Failed to read file".to_string())
                                 {
                                     error!("Failed to send error message: {}", e);
                                 }
@@ -119,7 +119,7 @@ where
                         error!("Error checking worker: {}", e);
                         if let Err(e) = self
                             .channel
-                            .send(Some(id.clone()), "Error checking worker status".to_string())
+                            .send(id.clone(), "Error checking worker status".to_string())
                         {
                             error!("Failed to send error message: {}", e);
                         }
