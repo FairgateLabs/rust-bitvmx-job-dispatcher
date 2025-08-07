@@ -77,7 +77,7 @@ mod emulator {
                 fail_config_prover.clone(),
             ),
         })?;
-        channel.send(Some(emulator_id.clone()), msg)?;
+        channel.send(emulator_id.clone(), msg)?;
 
         println!("Starting emulator job...");
         let (prover_result, job_id) = wait_for_result(&channel, "ProverExecuteResult", 10, 1)?;
@@ -103,7 +103,7 @@ mod emulator {
                 fail_config_verifier.clone(),
             ),
         })?;
-        channel.send(Some(emulator_id.clone()), msg)?;
+        channel.send(emulator_id.clone(), msg)?;
 
         let (verifier_result, job_id) =
             wait_for_result(&channel, "VerifierCheckExecutionResult", 10, 1)?;
@@ -125,7 +125,7 @@ mod emulator {
                     fail_config_prover.clone(),
                 ),
             })?;
-            channel.send(Some(emulator_id.clone()), msg)?;
+            channel.send(emulator_id.clone(), msg)?;
 
             let (prover_hashes_result, job_id) =
                 wait_for_result(&channel, "ProverGetHashesForRoundResult", 10, 1)?;
@@ -145,7 +145,7 @@ mod emulator {
                     fail_config_verifier.clone(),
                 ),
             })?;
-            channel.send(Some(emulator_id.clone()), msg)?;
+            channel.send(emulator_id.clone(), msg)?;
 
             let (verifier_choose_segment_result, job_id) =
                 wait_for_result(&channel, "VerifierChooseSegmentResult", 10, 1)?;
@@ -168,7 +168,7 @@ mod emulator {
                 fail_config_prover.clone(),
             ),
         })?;
-        channel.send(Some(emulator_id.clone()), msg)?;
+        channel.send(emulator_id.clone(), msg)?;
 
         let (final_trace, job_id) = wait_for_result(&channel, "ProverFinalTraceResult", 10, 1)?;
         let final_trace = EmulatorResultType::from_value(final_trace)?.as_final_trace()?;
@@ -187,7 +187,7 @@ mod emulator {
                 force_challenge,
             ),
         })?;
-        channel.send(Some(emulator_id), msg)?;
+        channel.send(emulator_id, msg)?;
 
         let (result, job_id) = wait_for_result(&channel, "VerifierChooseChallengeResult", 10, 1)?;
         let challenge = EmulatorResultType::from_value(result)?.as_challenge()?;
