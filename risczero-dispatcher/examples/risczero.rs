@@ -37,12 +37,11 @@ mod prover {
                 10000,
                 Some(IpAddr::from([127, 0, 0, 1])),
                 cert.get_pubk_hash()?,
-                Some(dest_id),
             )?,
             cert,
             Some(my_id),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11000),
-            allow_list,
+            Some(allow_list),
         )?;
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
