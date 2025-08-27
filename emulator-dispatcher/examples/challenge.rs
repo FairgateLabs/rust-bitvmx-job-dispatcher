@@ -17,7 +17,7 @@ mod emulator {
     // 2. run the server example first (from bitvmx-broker).
     //      cargo run --release --example server -- --port 10000
     // 3. Then run the job-dispatcher
-    //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1 --dest-id 2
+    //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1
     // 4. Then trigger one execution
     //      cargo run --release --example challenge --features "emulator"
     pub(crate) fn run_job() -> Result<(), anyhow::Error> {
@@ -38,12 +38,11 @@ mod emulator {
                 10000,
                 Some(IpAddr::from([127, 0, 0, 1])),
                 cert.get_pubk_hash()?,
-                Some(dest_id),
             )?,
             cert,
             Some(my_id),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11000),
-            allow_list,
+            Some(allow_list),
         )?;
 
         let input = 0;
