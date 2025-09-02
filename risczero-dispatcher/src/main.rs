@@ -82,7 +82,12 @@ fn main() -> Result<(), anyhow::Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    dispatcher_loop::<ProverJobType>(channel, check_interval, running)?;
+    dispatcher_loop::<ProverJobType>(
+        channel,
+        check_interval,
+        running,
+        "storage_job.db".to_string(),
+    )?;
 
     info!("Shutting down...");
 

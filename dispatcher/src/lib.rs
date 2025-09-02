@@ -2,13 +2,15 @@ pub mod dispatcher_error;
 pub mod dispatcher_job;
 pub mod dispatcher_message;
 pub mod dispatcher_module;
+pub mod dispatcher_storage;
+pub mod helper;
 
 use std::{
     fs,
-    process::{Child, Command},
+    process::Child,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
@@ -18,65 +20,44 @@ use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::I
 use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
 use dispatcher_module::{Dispatcher, JobContext};
+use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
+use storage_backend::{storage::Storage, storage_config::StorageConfig};
 use tracing::{error, info};
 
-pub fn process_msg<V>(dispatcher: &mut Dispatcher<V>, msg: &str) -> Option<(Child, JobContext)>
-where
-    V: DispatcherMessage + DeserializeOwned,
-{
-    info!("Received: {:?}", msg);
+use crate::helper::{process_msg, Msg};
 
-    let (cmd, args, job_context) = dispatcher.process_msg(msg).ok()?;
-    info!("Command: {:?}", cmd);
-    info!("Args: {:?}", args);
-
-    let child = Command::new(cmd).args(args).spawn();
-
-    if let Err(e) = child {
-        error!("Error executing command: {}", e);
-        dispatcher.discard_job(&job_context.job_id);
-        return None;
-    }
-    let child = child.unwrap();
-
-    Some((child, job_context))
-}
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     channel: DualChannel,
     workers: Vec<(Child, Identifier, JobContext)>,
     dispatcher: Dispatcher<T>,
+    storage: Arc<Mutex<DispatcherStorage>>,
 }
 
 impl<T> DispatcherHandler<T>
 where
     T: DispatcherMessage + DeserializeOwned,
 {
-    pub fn new(channel: DualChannel) -> Self {
-        let dispatcher = Dispatcher::<T>::new();
+    pub fn new(channel: DualChannel, storage_path: String) -> Self {
+        let mut dispatcher = Dispatcher::<T>::new();
+
+        let config = StorageConfig::new(storage_path, None);
+        let dispatcher_backend = Storage::new(&config).unwrap();
+        let dispatcher_backend = Arc::new(Mutex::new(dispatcher_backend));
+
+        let storage = Arc::new(Mutex::new(DispatcherStorage::new(dispatcher_backend)));
+        let workers = storage.lock().unwrap().restore_jobs(&mut dispatcher);
 
         Self {
             channel,
-            workers: Vec::new(),
+            workers,
             dispatcher,
+            storage,
         }
     }
 
     pub fn tick(&mut self) -> bool {
-        let msg = self.channel.recv();
         let mut job_completed = false;
-        match msg {
-            Ok(msg) => {
-                if let Some(msg) = msg {
-                    if let Some((child, context)) = process_msg(&mut self.dispatcher, &msg.0) {
-                        self.workers.push((child, msg.1, context));
-                    } else {
-                        error!("Error processing message: {:?}", msg);
-                    }
-                }
-            }
-            Err(e) => error!("Error: {:?}", e),
-        }
 
         if !self.workers.is_empty() {
             self.workers
@@ -99,6 +80,7 @@ where
                                         error!("Failed to send result: {}", e);
                                     }
                                 }
+                                self.storage.lock().unwrap().remove_job(&context.job_id);
                                 false
                             }
                             Err(e) => {
@@ -109,6 +91,7 @@ where
                                 {
                                     error!("Failed to send error message: {}", e);
                                 }
+                                self.storage.lock().unwrap().remove_job(&context.job_id);
                                 false
                             }
                         }
@@ -127,16 +110,36 @@ where
                     }
                 });
         }
+
+        let msg = self.channel.recv();
+        match msg {
+            Ok(msg) => {
+                if let Some(msg) = msg {
+                    let msg = Msg::from_msg(msg);
+                    if let Some((child, context)) =
+                        process_msg(&mut self.dispatcher, &msg, Some(self.storage.clone()))
+                    {
+                        self.workers.push((child, msg.id, context));
+                    } else {
+                        error!("Error processing message: {:?}", msg.to_string());
+                    }
+                }
+            }
+            Err(e) => error!("Error: {:?}", e),
+        }
+
         job_completed
     }
 }
 
-pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned>(
+pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned + std::fmt::Debug>(
     channel: DualChannel,
     check_interval: Duration,
     running: Arc<AtomicBool>,
+    storage_path: String,
 ) -> Result<(), anyhow::Error> {
-    let mut dispacher_handler: DispatcherHandler<T> = DispatcherHandler::<T>::new(channel);
+    let mut dispacher_handler: DispatcherHandler<T> =
+        DispatcherHandler::<T>::new(channel, storage_path);
 
     while running.load(Ordering::SeqCst) {
         dispacher_handler.tick();
