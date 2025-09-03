@@ -6,9 +6,10 @@ use std::{
 use bitvmx_broker::identification::identifier::Identifier;
 use serde::de::DeserializeOwned;
 use storage_backend::storage::{KeyValueStore, Storage};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
+    dispatcher_error::DispatcherError,
     dispatcher_message::DispatcherMessage,
     dispatcher_module::{Dispatcher, JobContext},
     helper::{job_key, process_msg, Msg},
@@ -24,29 +25,28 @@ impl DispatcherStorage {
         Self { storage }
     }
 
-    pub fn persist_job(&self, job_id: &str, raw_msg: &str) {
+    pub fn persist_job(&self, job_id: &str, raw_msg: &str) -> Result<(), DispatcherError> {
         let key = job_key(job_id);
-        if let Err(e) = self
-            .storage
+        self.storage
             .lock()
-            .unwrap()
-            .set(&key, raw_msg.to_string(), None)
-        {
-            error!("Failed to persist job {}: {}", job_id, e);
-        }
+            .map_err(|_| DispatcherError::MutexPoisoned)?
+            .set(&key, raw_msg.to_string(), None)?;
+        Ok(())
     }
 
-    pub fn remove_job(&self, job_id: &str) {
+    pub fn remove_job(&self, job_id: &str) -> Result<(), DispatcherError> {
         let key = job_key(job_id);
-        if let Err(e) = self.storage.lock().unwrap().delete(&key) {
-            error!("Failed to delete job {}: {}", job_id, e);
-        }
+        self.storage
+            .lock()
+            .map_err(|_| DispatcherError::MutexPoisoned)?
+            .delete(&key)?;
+        Ok(())
     }
 
     pub fn restore_jobs<T>(
         &self,
         dispatcher: &mut Dispatcher<T>,
-    ) -> Vec<(Child, Identifier, JobContext)>
+    ) -> Result<Vec<(Child, Identifier, JobContext)>, DispatcherError>
     where
         T: DispatcherMessage + DeserializeOwned,
     {
@@ -56,26 +56,27 @@ impl DispatcherStorage {
         let keys = self
             .storage
             .lock()
-            .unwrap()
+            .map_err(|_| DispatcherError::MutexPoisoned)?
             .partial_compare_keys("job_")
             .unwrap_or(vec![]);
 
         for key in keys {
-            let raw = match self.storage.lock().unwrap().get::<_, String>(&key) {
+            let raw = match self
+                .storage
+                .lock()
+                .map_err(|_| DispatcherError::MutexPoisoned)?
+                .get::<_, String>(&key)
+            {
                 Ok(Some(val)) => val.to_string(),
                 _ => continue,
             };
             info!("Restoring job from key {}: {}", key, raw);
-            let msg = Msg::from_string(&raw).unwrap();
+            let msg = Msg::from_string(&raw)?;
 
-            if let Some((child, context)) = process_msg(dispatcher, &msg, None) {
-                // None because it is already saved
-                workers.push((child, msg.id, context));
-            } else {
-                error!("Error processing message: {:?}", msg.to_string());
-            }
+            let (child, context) = process_msg(dispatcher, &msg, None)?; // None because it is already saved
+            workers.push((child, msg.id, context));
         }
 
-        workers
+        Ok(workers)
     }
 }
