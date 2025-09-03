@@ -17,7 +17,7 @@ use bitvmx_broker::{
     rpc::{sync_server::BrokerSync, tls_helper::Cert, BrokerConfig},
 };
 
-use bitvmx_job_dispatcher::dispatcher_loop;
+use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
 use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
 use tracing::{error, info};
 use tracing_subscriber::{
@@ -77,7 +77,7 @@ fn init_trace() -> Result<(), anyhow::Error> {
 }
 
 fn get_storage_path() -> String {
-    let storage_path = format!("../storage_job_{}.db", std::process::id());
+    let storage_path = format!("../temp-runs/storage_job_{}.db", std::process::id());
     if path::Path::new(&storage_path).exists() {
         fs::remove_file(&storage_path)
             .unwrap_or_else(|e| error!("Warning: could not remove old storage file: {e}"));
@@ -117,8 +117,9 @@ fn start_emulator(
 
         let check_interval = Duration::from_secs(1);
 
+        let storage = get_storage_with_path(&storage_path).unwrap();
         if let Err(e) =
-            dispatcher_loop::<EmulatorJobType>(channel, check_interval, running, storage_path)
+            dispatcher_loop::<EmulatorJobType>(channel, check_interval, running, storage)
         {
             return Err(format!("dispatcher error: {e}"));
         }

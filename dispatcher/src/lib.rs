@@ -8,6 +8,7 @@ pub mod helper;
 use std::{
     fs,
     process::Child,
+    rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -41,14 +42,10 @@ impl<T> DispatcherHandler<T>
 where
     T: DispatcherMessage + DeserializeOwned,
 {
-    pub fn new(channel: DualChannel, storage_path: String) -> Result<Self, DispatcherError> {
+    pub fn new(channel: DualChannel, storage: Rc<Storage>) -> Result<Self, DispatcherError> {
         let mut dispatcher = Dispatcher::<T>::new();
 
-        let config = StorageConfig::new(storage_path, None);
-        let dispatcher_backend = Storage::new(&config)?;
-        let dispatcher_backend = Arc::new(Mutex::new(dispatcher_backend));
-
-        let storage = Arc::new(Mutex::new(DispatcherStorage::new(dispatcher_backend)));
+        let storage = Arc::new(Mutex::new(DispatcherStorage::new(storage)));
         let workers = storage
             .lock()
             .map_err(|_| DispatcherError::MutexPoisoned)?
@@ -134,10 +131,10 @@ pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned + std::fmt::Debug
     channel: DualChannel,
     check_interval: Duration,
     running: Arc<AtomicBool>,
-    storage_path: String,
+    storage: Rc<Storage>,
 ) -> Result<(), DispatcherError> {
     let mut dispacher_handler: DispatcherHandler<T> =
-        DispatcherHandler::<T>::new(channel, storage_path)?;
+        DispatcherHandler::<T>::new(channel, storage)?;
 
     while running.load(Ordering::SeqCst) {
         dispacher_handler.tick()?;
@@ -145,4 +142,16 @@ pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned + std::fmt::Debug
     }
 
     Ok(())
+}
+
+// Just for testing purposes
+pub fn get_storage_with_path(storage_path: &str) -> Result<Rc<Storage>, DispatcherError> {
+    let config = StorageConfig::new(storage_path.to_string(), None);
+    //     let dispatcher_backend = Storage::new(&config)?;
+    //     let dispatcher_backend = Arc::new(Mutex::new(dispatcher_backend));
+
+    //     Ok(Arc::new(Mutex::new(DispatcherStorage::new(
+    //         dispatcher_backend,
+    //     ))))
+    Ok(Rc::new(Storage::new(&config)?))
 }

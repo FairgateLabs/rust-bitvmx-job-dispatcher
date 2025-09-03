@@ -14,7 +14,7 @@ use bitvmx_broker::{
     rpc::{tls_helper::Cert, BrokerConfig},
 };
 
-use bitvmx_job_dispatcher::dispatcher_loop;
+use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
 use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
 use clap::{command, Parser};
 use tracing::info;
@@ -82,12 +82,8 @@ fn main() -> Result<(), anyhow::Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    dispatcher_loop::<ProverJobType>(
-        channel,
-        check_interval,
-        running,
-        "storage_job.db".to_string(),
-    )?;
+    let storage = get_storage_with_path("temp-runs/storage_job.db")?;
+    dispatcher_loop::<ProverJobType>(channel, check_interval, running, storage)?;
 
     info!("Shutting down...");
 
