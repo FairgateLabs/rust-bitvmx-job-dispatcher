@@ -1,7 +1,4 @@
-use std::{
-    process::Child,
-    sync::{Arc, Mutex},
-};
+use std::{process::Child, rc::Rc};
 
 use bitvmx_broker::identification::identifier::Identifier;
 use serde::de::DeserializeOwned;
@@ -17,29 +14,23 @@ use crate::{
 
 /// Persists and restores jobs from Storage.
 pub struct DispatcherStorage {
-    storage: Arc<Mutex<Storage>>,
+    storage: Rc<Storage>,
 }
 
 impl DispatcherStorage {
-    pub fn new(storage: Arc<Mutex<Storage>>) -> Self {
+    pub fn new(storage: Rc<Storage>) -> Self {
         Self { storage }
     }
 
     pub fn persist_job(&self, job_id: &str, raw_msg: &str) -> Result<(), DispatcherError> {
         let key = job_key(job_id);
-        self.storage
-            .lock()
-            .map_err(|_| DispatcherError::MutexPoisoned)?
-            .set(&key, raw_msg.to_string(), None)?;
+        self.storage.set(&key, raw_msg.to_string(), None)?;
         Ok(())
     }
 
     pub fn remove_job(&self, job_id: &str) -> Result<(), DispatcherError> {
         let key = job_key(job_id);
-        self.storage
-            .lock()
-            .map_err(|_| DispatcherError::MutexPoisoned)?
-            .delete(&key)?;
+        self.storage.delete(&key)?;
         Ok(())
     }
 
@@ -53,20 +44,10 @@ impl DispatcherStorage {
         let mut workers = Vec::new();
 
         // list all keys starting with job_
-        let keys = self
-            .storage
-            .lock()
-            .map_err(|_| DispatcherError::MutexPoisoned)?
-            .partial_compare_keys("job_")
-            .unwrap_or(vec![]);
+        let keys = self.storage.partial_compare_keys("job_").unwrap_or(vec![]);
 
         for key in keys {
-            let raw = match self
-                .storage
-                .lock()
-                .map_err(|_| DispatcherError::MutexPoisoned)?
-                .get::<_, String>(&key)
-            {
+            let raw = match self.storage.get::<_, String>(&key) {
                 Ok(Some(val)) => val.to_string(),
                 _ => continue,
             };
