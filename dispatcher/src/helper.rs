@@ -7,9 +7,10 @@ use std::{
 
 use bitvmx_broker::identification::identifier::Identifier;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
+    dispatcher_error::DispatcherError,
     dispatcher_message::DispatcherMessage,
     dispatcher_module::{Dispatcher, JobContext},
     dispatcher_storage::DispatcherStorage,
@@ -57,14 +58,16 @@ impl Msg {
         format!("{}", self)
     }
 
-    pub fn from_string(s: &str) -> Option<Self> {
-        s.parse().ok()
+    pub fn from_string(s: &str) -> Result<Self, DispatcherError> {
+        s.parse().map_err(|_| DispatcherError::ParseError)
     }
 }
 
-fn resolve_command_path(cmd: &str) -> PathBuf {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    workspace_root.join(cmd)
+fn resolve_command_path(cmd: &str) -> Result<PathBuf, DispatcherError> {
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or(DispatcherError::ParseError)?;
+    Ok(workspace_root.join(cmd))
 }
 
 pub fn job_key(job_id: &str) -> String {
@@ -75,30 +78,29 @@ pub fn process_msg<V>(
     dispatcher: &mut Dispatcher<V>,
     msg: &Msg,
     store: Option<Arc<Mutex<DispatcherStorage>>>,
-) -> Option<(Child, JobContext)>
+) -> Result<(Child, JobContext), DispatcherError>
 where
     V: DispatcherMessage + DeserializeOwned,
 {
     info!("Received: {:?}", msg.raw);
 
-    let (cmd, args, job_context) = dispatcher.process_msg(&msg.raw).ok()?;
-    let cmd = resolve_command_path(&cmd);
+    let (cmd, args, job_context) = dispatcher.process_msg(&msg.raw)?;
+    let cmd = resolve_command_path(&cmd)?;
     info!("Command: {:?}", cmd);
     info!("Args: {:?}", args);
 
     if let Some(storage) = store {
         let key = job_key(&job_context.job_id);
-        storage.lock().unwrap().persist_job(&key, &msg.to_string());
+        storage
+            .lock()
+            .map_err(|_| DispatcherError::MutexPoisoned)?
+            .persist_job(&key, &msg.to_string())?;
     }
 
-    let child = Command::new(cmd).args(args).spawn();
-
-    if let Err(e) = child {
-        error!("Error executing command: {}", e);
+    let child = Command::new(cmd).args(args).spawn().map_err(|e| {
         dispatcher.discard_job(&job_context.job_id);
-        return None;
-    }
-    let child = child.unwrap();
+        DispatcherError::IoError(e)
+    })?;
 
-    Some((child, job_context))
+    Ok((child, job_context))
 }

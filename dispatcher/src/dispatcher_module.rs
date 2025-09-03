@@ -47,7 +47,9 @@ where
 
         if self.jobs.contains_key(msg.job_id()) {
             error!("Job id already exists: {}", msg.job_id());
-            return Err(DispatcherError::JobIdAlreadyExists);
+            return Err(DispatcherError::JobIdAlreadyExists(
+                msg.job_id().to_string(),
+            ));
         }
 
         let (cmd, args, command_file) = msg.job_type.command()?;
@@ -68,30 +70,30 @@ where
         id: &str,
         result: String,
         status: ExitStatus,
-    ) -> Option<String> {
+    ) -> Result<String, DispatcherError> {
         if let Some(msg_type) = self.jobs.remove(id) {
             if status.success() {
                 let expected_type = msg_type.message_type();
-                if let Some(json_result) = Self::extract_structured_json(&expected_type, &result) {
-                    return Some(json_result);
-                }
-                error!("No structured result found");
-                None
+                Self::extract_structured_json(&expected_type, &result)
             } else {
-                // Process exited with error
-                Some("Error".to_string())
+                Err(DispatcherError::ProcessFailed(status.code().unwrap_or(-1)))
             }
         } else {
-            None
+            Err(DispatcherError::JobIdNotFound(id.to_string()))
         }
     }
 
-    fn extract_structured_json(expected_type: &str, result: &str) -> Option<String> {
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(result) {
-            if parsed.get("type") == Some(&serde_json::Value::String(expected_type.to_string())) {
-                return Some(result.to_string());
-            }
+    fn extract_structured_json(
+        expected_type: &str,
+        result: &str,
+    ) -> Result<String, DispatcherError> {
+        let parsed: serde_json::Value = serde_json::from_str(result)?;
+        if parsed.get("type") == Some(&serde_json::Value::String(expected_type.to_string())) {
+            Ok(result.to_string())
+        } else {
+            Err(DispatcherError::ResultTypeMismatch(
+                expected_type.to_string(),
+            ))
         }
-        None
     }
 }

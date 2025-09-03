@@ -19,7 +19,7 @@ use bitvmx_broker::{
 
 use bitvmx_job_dispatcher::dispatcher_loop;
 use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
@@ -80,7 +80,7 @@ fn get_storage_path() -> String {
     let storage_path = format!("../storage_job_{}.db", std::process::id());
     if path::Path::new(&storage_path).exists() {
         fs::remove_file(&storage_path)
-            .unwrap_or_else(|e| eprintln!("Warning: could not remove old storage file: {e}"));
+            .unwrap_or_else(|e| error!("Warning: could not remove old storage file: {e}"));
     }
     storage_path
 }
@@ -89,7 +89,7 @@ fn remove_storage_file(storage_path: &str) {
     // clean up the test’s storage file
     if path::Path::new(&storage_path).exists() {
         fs::remove_file(&storage_path)
-            .unwrap_or_else(|e| eprintln!("Warning: could not remove storage file: {e}"))
+            .unwrap_or_else(|e| error!("Warning: could not remove storage file: {e}"))
     }
 }
 
