@@ -24,7 +24,7 @@ use dispatcher_module::{Dispatcher, JobContext};
 use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
-use tracing::info;
+use tracing::{error, info};
 
 use crate::{
     dispatcher_error::DispatcherError,
@@ -60,7 +60,18 @@ where
     }
 
     pub fn tick(&mut self) -> Result<bool, DispatcherError> {
+        let msg = self.channel.recv()?;
         let mut job_completed = false;
+
+        if let Some(msg) = msg {
+            let mymsg = Msg::from_msg(msg.clone());
+            if let Ok((child, context)) =
+                process_msg(&mut self.dispatcher, &mymsg, Some(self.storage.clone()))
+            //TODO: error handling
+            {
+                self.workers.push((child, msg.1, context));
+            }
+        }
 
         if !self.workers.is_empty() {
             let mut new_workers = Vec::new();
@@ -113,14 +124,6 @@ where
                 }
             }
             self.workers = new_workers;
-        }
-
-        let msg = self.channel.recv()?;
-        if let Some(msg) = msg {
-            let msg = Msg::from_msg(msg);
-            let (child, context) =
-                process_msg(&mut self.dispatcher, &msg, Some(self.storage.clone()))?;
-            self.workers.push((child, msg.id, context));
         }
 
         Ok(job_completed)
