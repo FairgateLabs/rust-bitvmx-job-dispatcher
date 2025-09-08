@@ -76,26 +76,17 @@ pub fn job_key(job_id: &str) -> String {
 
 pub fn process_msg<V>(
     dispatcher: &mut Dispatcher<V>,
-    msg: &Msg,
-    store: Option<Arc<Mutex<DispatcherStorage>>>,
+    msg: &str,
 ) -> Result<(Child, JobContext), DispatcherError>
 where
     V: DispatcherMessage + DeserializeOwned,
 {
-    info!("Received: {:?}", msg.raw);
+    info!("Received: {:?}", msg);
 
-    let (cmd, args, job_context) = dispatcher.process_msg(&msg.raw)?;
+    let (cmd, args, job_context) = dispatcher.process_msg(&msg)?;
     let cmd = resolve_command_path(&cmd)?;
     info!("Command: {:?}", cmd);
     info!("Args: {:?}", args);
-
-    if let Some(storage) = store {
-        let key = job_key(&job_context.job_id);
-        storage
-            .lock()
-            .map_err(|_| DispatcherError::MutexPoisoned)?
-            .persist_job(&key, &msg.to_string())?;
-    }
 
     let child = Command::new(cmd).args(args).spawn().map_err(|e| {
         dispatcher.discard_job(&job_context.job_id);
@@ -103,4 +94,17 @@ where
     })?;
 
     Ok((child, job_context))
+}
+
+pub fn persist_job(
+    job_context: &JobContext,
+    msg: &Msg,
+    storage: Arc<Mutex<DispatcherStorage>>,
+) -> Result<(), DispatcherError> {
+    let key: String = job_key(&job_context.job_id);
+    storage
+        .lock()
+        .map_err(|_| DispatcherError::MutexPoisoned)?
+        .persist_job(&key, &msg.to_string())?;
+    Ok(())
 }
