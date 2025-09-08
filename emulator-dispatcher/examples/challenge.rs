@@ -48,7 +48,7 @@ pub mod emulator {
     use std::{fs, net::IpAddr, path::Path, thread::sleep, time::Duration};
     use tracing::info;
 
-    pub(crate) fn run_job(paths: Paths) -> Result<(), anyhow::Error> {
+    pub(crate) fn run_job(paths: Paths, port: u16) -> Result<(), anyhow::Error> {
         info!("Starting challenge example...");
         let privk = fs::read_to_string(paths.privk)?;
         let my_id = 2;
@@ -59,12 +59,12 @@ pub mod emulator {
         let emulator_id = Identifier {
             pubkey_hash: cert.get_pubk_hash()?,
             id: Some(dest_id),
-            address: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000),
+            address: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
         };
 
         let channel = DualChannel::new(
             &BrokerConfig::new(
-                10000,
+                port,
                 Some(IpAddr::from([127, 0, 0, 1])),
                 cert.get_pubk_hash()?,
             )?,
@@ -278,7 +278,7 @@ pub mod emulator {
 fn main() {
     init_trace().unwrap();
     let paths = Paths::new("");
-    if let Err(e) = emulator::run_job(paths) {
+    if let Err(e) = emulator::run_job(paths, 10000) {
         error!("Error: {}", e);
     }
 }

@@ -54,7 +54,7 @@ impl DispatcherStorage {
             info!("Restoring job from key {}: {}", key, raw);
             let msg = Msg::from_string(&raw)?;
 
-            let (child, context) = process_msg(dispatcher, &msg, None)?; // None because it is already saved
+            let (child, context) = process_msg(dispatcher, &msg.raw)?;
             workers.push((child, msg.id, context));
         }
 

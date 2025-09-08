@@ -24,11 +24,11 @@ use dispatcher_module::{Dispatcher, JobContext};
 use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
     dispatcher_error::DispatcherError,
-    helper::{process_msg, Msg},
+    helper::{persist_job, process_msg, Msg},
 };
 
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
@@ -64,13 +64,10 @@ where
         let mut job_completed = false;
 
         if let Some(msg) = msg {
-            let mymsg = Msg::from_msg(msg.clone());
-            if let Ok((child, context)) =
-                process_msg(&mut self.dispatcher, &mymsg, Some(self.storage.clone()))
-            //TODO: error handling
-            {
-                self.workers.push((child, msg.1, context));
-            }
+            let msg = Msg::from_msg(msg.clone());
+            let (child, context) = process_msg(&mut self.dispatcher, &msg.raw)?;
+            persist_job(&context, &msg, self.storage.clone())?;
+            self.workers.push((child, msg.id, context));
         }
 
         if !self.workers.is_empty() {

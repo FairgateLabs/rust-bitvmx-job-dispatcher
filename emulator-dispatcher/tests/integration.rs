@@ -29,7 +29,7 @@ use crate::challenge::Paths;
 #[path = "../examples/challenge.rs"]
 mod challenge;
 
-const PORT: u16 = 10000;
+const PORT: u16 = 10300;
 
 #[test]
 fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
@@ -38,7 +38,7 @@ fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
     let mut server_handler = init_server(PORT)?;
     let running_dispatcher = Arc::new(AtomicBool::new(true));
     let _emulator_handler = start_emulator(running_dispatcher.clone(), storage_path.to_string())?;
-    let challenge_handler = start_challenge()?;
+    let challenge_handler = start_challenge(PORT)?;
     std::thread::sleep(std::time::Duration::from_secs(9));
 
     info!("⛔ Shutting down dispatcher...");
@@ -99,11 +99,10 @@ fn start_emulator(
 ) -> Result<thread::JoinHandle<Result<(), String>>, anyhow::Error> {
     let handle = thread::spawn(move || {
         let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        let port = 10000;
         let my_id = 1;
         let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key").unwrap();
 
-        let my_address = SocketAddr::new(IpAddr::from(ip), port);
+        let my_address = SocketAddr::new(IpAddr::from(ip), PORT);
 
         let cert = Cert::new_with_privk(&privk).unwrap();
         let allow_list =
@@ -111,7 +110,7 @@ fn start_emulator(
                 .unwrap();
 
         let config =
-            BrokerConfig::new(port, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap()).unwrap();
+            BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap()).unwrap();
         let channel =
             DualChannel::new(&config, cert, Some(my_id), my_address, Some(allow_list)).unwrap();
 
@@ -130,10 +129,10 @@ fn start_emulator(
     Ok(handle)
 }
 
-fn start_challenge() -> Result<thread::JoinHandle<()>, anyhow::Error> {
+fn start_challenge(port: u16) -> Result<thread::JoinHandle<()>, anyhow::Error> {
     let path = Paths::new("../");
     let handle = thread::spawn(move || {
-        challenge::emulator::run_job(path).unwrap();
+        challenge::emulator::run_job(path, port).unwrap();
     });
     Ok(handle)
 }
