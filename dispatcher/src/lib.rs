@@ -43,9 +43,9 @@ where
     T: DispatcherMessage + DeserializeOwned,
 {
     pub fn new(channel: DualChannel, storage: Rc<Storage>) -> Result<Self, DispatcherError> {
+        let storage = Arc::new(Mutex::new(DispatcherStorage::new(storage)));
         let mut dispatcher = Dispatcher::<T>::new();
 
-        let storage = Arc::new(Mutex::new(DispatcherStorage::new(storage)));
         let workers = storage
             .lock()
             .map_err(|_| DispatcherError::MutexPoisoned)?
@@ -57,6 +57,15 @@ where
             dispatcher,
             storage,
         })
+    }
+
+    pub fn new_with_path(
+        channel: DualChannel,
+        storage_path: &str,
+    ) -> Result<Self, DispatcherError> {
+        let config = StorageConfig::new(storage_path.to_string(), None);
+        let storage = Rc::new(Storage::new(&config)?);
+        Self::new(channel, storage)
     }
 
     pub fn tick(&mut self) -> Result<bool, DispatcherError> {
@@ -147,11 +156,5 @@ pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned + std::fmt::Debug
 // Just for testing purposes
 pub fn get_storage_with_path(storage_path: &str) -> Result<Rc<Storage>, DispatcherError> {
     let config = StorageConfig::new(storage_path.to_string(), None);
-    //     let dispatcher_backend = Storage::new(&config)?;
-    //     let dispatcher_backend = Arc::new(Mutex::new(dispatcher_backend));
-
-    //     Ok(Arc::new(Mutex::new(DispatcherStorage::new(
-    //         dispatcher_backend,
-    //     ))))
     Ok(Rc::new(Storage::new(&config)?))
 }
