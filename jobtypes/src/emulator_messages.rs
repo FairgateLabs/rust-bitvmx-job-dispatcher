@@ -6,7 +6,10 @@ use bitvmx_job_dispatcher::{
     dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
 };
 use emulator::{
-    decision::challenge::{ForceChallenge, ForceCondition},
+    decision::{
+        challenge::{ForceChallenge, ForceCondition},
+        nary_search::NArySearchType,
+    },
     executor::utils::FailConfiguration,
 };
 use serde::{Deserialize, Serialize};
@@ -105,6 +108,7 @@ impl DispatcherMessage for EmulatorJobType {
                 v_decision,
                 command_file,
                 fail_config_prover,
+                nary_search_type,
             ) => {
                 let mut args = vec![
                     "prover-get-hashes-for-round".to_string(),
@@ -118,6 +122,8 @@ impl DispatcherMessage for EmulatorJobType {
                     v_decision.to_string(),
                     "--command-file".to_string(),
                     command_file.clone(),
+                    "--nary-type".to_string(),
+                    nary_search_type.to_string(),
                 ];
 
                 if let Some(fcp) = fail_config_prover {
@@ -134,6 +140,7 @@ impl DispatcherMessage for EmulatorJobType {
                 hashes,
                 command_file,
                 fail_config_verifier,
+                nary_search_type,
             ) => {
                 let mut args = vec![
                     "verifier-choose-segment".to_string(),
@@ -145,6 +152,8 @@ impl DispatcherMessage for EmulatorJobType {
                     round_number.to_string(),
                     "--command-file".to_string(),
                     command_file.clone(),
+                    "--nary-type".to_string(),
+                    nary_search_type.to_string(),
                 ];
 
                 if let Some(fcv) = fail_config_verifier {
@@ -226,10 +235,10 @@ impl DispatcherMessage for EmulatorJobType {
                 "VerifierCheckExecutionResult"
             }
 
-            EmulatorJobType::ProverGetHashesForRound(_, _, _, _, _, _) => {
+            EmulatorJobType::ProverGetHashesForRound(_, _, _, _, _, _, _) => {
                 "ProverGetHashesForRoundResult"
             }
-            EmulatorJobType::VerifierChooseSegment(_, _, _, _, _, _) => {
+            EmulatorJobType::VerifierChooseSegment(_, _, _, _, _, _, _) => {
                 "VerifierChooseSegmentResult"
             }
             EmulatorJobType::ProverFinalTrace(_, _, _, _, _) => "ProverFinalTraceResult",
@@ -256,7 +265,15 @@ pub enum EmulatorJobType {
         ForceCondition,
         Option<FailConfiguration>,
     ), // yaml path, inputs, checkpoint path, claim_last_step, claim_last_hash, command_file, fail_config_verifier
-    ProverGetHashesForRound(String, String, u8, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, round_number, v_decision, command_file, fail_config_prover
+    ProverGetHashesForRound(
+        String,
+        String,
+        u8,
+        u32,
+        String,
+        Option<FailConfiguration>,
+        NArySearchType,
+    ), // pdf, checkpoint_prover_path, round_number, v_decision, command_file, fail_config_prover, nary_search_type
     VerifierChooseSegment(
         String,
         String,
@@ -264,7 +281,8 @@ pub enum EmulatorJobType {
         Vec<String>,
         String,
         Option<FailConfiguration>,
-    ), // pdf, checkpoint_verifier_path, round_number, hashes, command_file, fail_config_verifier
+        NArySearchType,
+    ), // pdf, checkpoint_verifier_path, round_number, hashes, command_file, fail_config_verifier, nary_search_type
     ProverFinalTrace(String, String, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, v_decision, command_file, fail_config_prover
     VerifierChooseChallenge(
         String,

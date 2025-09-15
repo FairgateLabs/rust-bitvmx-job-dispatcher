@@ -151,6 +151,7 @@ pub mod emulator {
                     v_decision,
                     commands_file.clone(),
                     fail_config_prover.clone(),
+                    emulator::decision::nary_search::NArySearchType::ReadValueChallenge,
                 ),
             })?;
             channel.send(emulator_id.clone(), msg)?;
@@ -171,6 +172,7 @@ pub mod emulator {
                     hashes,
                     commands_file.clone(),
                     fail_config_verifier.clone(),
+                    emulator::decision::nary_search::NArySearchType::ReadValueChallenge,
                 ),
             })?;
             channel.send(emulator_id.clone(), msg)?;
