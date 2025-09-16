@@ -109,8 +109,7 @@ fn start_emulator(
             AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
                 .unwrap();
 
-        let config =
-            BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap()).unwrap();
+        let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap());
         let channel =
             DualChannel::new(&config, cert, Some(my_id), my_address, Some(allow_list)).unwrap();
 
@@ -144,7 +143,7 @@ fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
         AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]).unwrap();
     let routing = RoutingTable::new();
     routing.lock().unwrap().allow_all();
-    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap()).unwrap();
+    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap());
 
     let storage = Arc::new(Mutex::new(
         bitvmx_broker::broker_memstorage::MemStorage::new(),

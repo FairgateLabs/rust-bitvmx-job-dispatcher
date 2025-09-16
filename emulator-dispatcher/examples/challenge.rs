@@ -67,7 +67,7 @@ pub mod emulator {
                 port,
                 Some(IpAddr::from([127, 0, 0, 1])),
                 cert.get_pubk_hash()?,
-            )?,
+            ),
             cert,
             Some(my_id),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11000),

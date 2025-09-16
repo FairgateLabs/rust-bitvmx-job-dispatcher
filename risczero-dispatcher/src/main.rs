@@ -70,7 +70,7 @@ fn main() -> Result<(), anyhow::Error> {
         AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
 
     let config: BrokerConfig =
-        BrokerConfig::new(args.port, Some(IpAddr::from(ip)), cert.get_pubk_hash()?)?;
+        BrokerConfig::new(args.port, Some(IpAddr::from(ip)), cert.get_pubk_hash()?);
     let channel = DualChannel::new(&config, cert, Some(my_id), my_address, Some(allow_list))?;
     let check_interval = std::time::Duration::from_secs(1);
 
