@@ -44,7 +44,7 @@ pub mod emulator {
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
     use emulator::executor::utils::FailConfiguration;
-    use std::net::{Ipv4Addr, SocketAddr};
+    use std::net::Ipv4Addr;
     use std::{fs, net::IpAddr, path::Path, thread::sleep, time::Duration};
     use tracing::info;
 
@@ -59,7 +59,7 @@ pub mod emulator {
         let emulator_id = Identifier {
             pubkey_hash: cert.get_pubk_hash()?,
             id: Some(dest_id),
-            address: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port),
+            ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
         };
 
         let channel = DualChannel::new(
@@ -70,7 +70,7 @@ pub mod emulator {
             ),
             cert,
             Some(my_id),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11000),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
             Some(allow_list),
         )?;
 
