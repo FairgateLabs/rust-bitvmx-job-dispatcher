@@ -1,6 +1,6 @@
 use std::{
     fs,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -63,7 +63,6 @@ fn main() -> Result<(), anyhow::Error> {
     //TODO: obtain these values from a config file
     let my_id = args.my_id;
     let privk = fs::read_to_string("../rust-bitvmx-broker/certs/services.key")?;
-    let my_address = SocketAddr::new(IpAddr::from(ip), args.port);
 
     let cert = Cert::new_with_privk(&privk)?;
     let allow_list =
@@ -71,7 +70,13 @@ fn main() -> Result<(), anyhow::Error> {
 
     let config: BrokerConfig =
         BrokerConfig::new(args.port, Some(IpAddr::from(ip)), cert.get_pubk_hash()?);
-    let channel = DualChannel::new(&config, cert, Some(my_id), my_address, Some(allow_list))?;
+    let channel = DualChannel::new(
+        &config,
+        cert,
+        Some(my_id),
+        IpAddr::from(ip),
+        Some(allow_list),
+    )?;
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));
