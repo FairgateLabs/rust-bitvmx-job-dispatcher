@@ -108,14 +108,7 @@ fn start_emulator(
                 .unwrap();
 
         let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap());
-        let channel = DualChannel::new(
-            &config,
-            cert,
-            Some(my_id),
-            IpAddr::from(ip),
-            Some(allow_list),
-        )
-        .unwrap();
+        let channel = DualChannel::new(&config, cert, Some(my_id), allow_list).unwrap();
 
         let check_interval = Duration::from_secs(1);
 

@@ -58,8 +58,7 @@ pub mod emulator {
             AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
         let emulator_id = Identifier {
             pubkey_hash: cert.get_pubk_hash()?,
-            id: Some(dest_id),
-            ip: IpAddr::V4(Ipv4Addr::LOCALHOST),
+            id: dest_id,
         };
 
         let channel = DualChannel::new(
@@ -70,8 +69,7 @@ pub mod emulator {
             ),
             cert,
             Some(my_id),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            Some(allow_list),
+            allow_list,
         )?;
 
         let input = 0;
