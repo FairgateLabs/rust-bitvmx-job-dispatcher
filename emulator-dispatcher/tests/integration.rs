@@ -1,6 +1,6 @@
 use std::{
     fs,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr},
     path,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -102,17 +102,13 @@ fn start_emulator(
         let my_id = 1;
         let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key").unwrap();
 
-        let my_address = SocketAddr::new(IpAddr::from(ip), PORT);
-
         let cert = Cert::new_with_privk(&privk).unwrap();
         let allow_list =
             AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
                 .unwrap();
 
-        let config =
-            BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap()).unwrap();
-        let channel =
-            DualChannel::new(&config, cert, Some(my_id), my_address, Some(allow_list)).unwrap();
+        let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap());
+        let channel = DualChannel::new(&config, cert, Some(my_id), allow_list).unwrap();
 
         let check_interval = Duration::from_secs(1);
 
@@ -144,7 +140,7 @@ fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
         AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]).unwrap();
     let routing = RoutingTable::new();
     routing.lock().unwrap().allow_all();
-    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap()).unwrap();
+    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap());
 
     let storage = Arc::new(Mutex::new(
         bitvmx_broker::broker_memstorage::MemStorage::new(),

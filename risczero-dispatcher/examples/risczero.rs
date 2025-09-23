@@ -5,7 +5,7 @@ mod prover {
     use bitvmx_broker::{channel::channel::DualChannel, rpc::tls_helper::Cert};
     use bitvmx_job_dispatcher::dispatcher_job::DispatcherJob;
     use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
-    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::net::{IpAddr, Ipv4Addr};
     use std::{fs, thread::sleep, time::Duration};
     use zk_result::ResultType as ProverResultType;
 
@@ -28,8 +28,7 @@ mod prover {
             AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
         let emulator_id = Identifier {
             pubkey_hash: cert.get_pubk_hash()?,
-            id: Some(dest_id),
-            address: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10000),
+            id: dest_id,
         };
 
         let channel = DualChannel::new(
@@ -37,11 +36,10 @@ mod prover {
                 10000,
                 Some(IpAddr::from([127, 0, 0, 1])),
                 cert.get_pubk_hash()?,
-            )?,
+            ),
             cert,
             Some(my_id),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11000),
-            Some(allow_list),
+            allow_list,
         )?;
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
