@@ -1,4 +1,5 @@
 use std::{
+    fs,
     net::{IpAddr, Ipv4Addr},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -7,9 +8,13 @@ use std::{
 };
 
 use anyhow::Result;
-use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
+use bitvmx_broker::{
+    channel::channel::DualChannel,
+    identification::allow_list::AllowList,
+    rpc::{tls_helper::Cert, BrokerConfig},
+};
 
-use bitvmx_job_dispatcher::dispatcher_loop;
+use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
 use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
 use clap::{command, Parser};
 use tracing::info;
@@ -25,6 +30,9 @@ struct Command {
     ip: String,
     #[arg(long)]
     port: u16,
+
+    #[arg(long, default_value = "1")]
+    my_id: u8,
 }
 
 fn init_trace() -> Result<(), anyhow::Error> {
@@ -40,7 +48,6 @@ fn init_trace() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-const PROVER_ID: u32 = 2000;
 fn main() -> Result<(), anyhow::Error> {
     init_trace()?;
     let args = Command::parse();
@@ -53,8 +60,17 @@ fn main() -> Result<(), anyhow::Error> {
         .map(|ip| ip.octets())
         .expect("Invalid IPv4 address");
 
-    let config = BrokerConfig::new(args.port, Some(IpAddr::from(ip)));
-    let channel = DualChannel::new(&config, PROVER_ID);
+    //TODO: obtain these values from a config file
+    let my_id = args.my_id;
+    let privk = fs::read_to_string("../rust-bitvmx-broker/certs/services.key")?;
+
+    let cert = Cert::new_with_privk(&privk)?;
+    let allow_list =
+        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
+
+    let config: BrokerConfig =
+        BrokerConfig::new(args.port, Some(IpAddr::from(ip)), cert.get_pubk_hash()?);
+    let channel = DualChannel::new(&config, cert, Some(my_id), allow_list)?;
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));
@@ -65,7 +81,8 @@ fn main() -> Result<(), anyhow::Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    dispatcher_loop::<ProverJobType>(channel, check_interval, running)?;
+    let storage = get_storage_with_path("temp-runs/storage_job.db")?;
+    dispatcher_loop::<ProverJobType>(channel, check_interval, running, storage)?;
 
     info!("Shutting down...");
 

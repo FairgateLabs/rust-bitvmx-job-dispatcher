@@ -13,6 +13,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
 hex = "0.4"
 bitvmx-broker = { path = "../../rust-bitvmx-broker" }
+rust-bitvmx-storage-backend = { path = "../../rust-bitvmx-storage-backend" }
 
 [dev-dependencies]
 config = "0.15.11"

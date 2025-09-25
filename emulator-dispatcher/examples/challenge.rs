@@ -1,36 +1,83 @@
 use tracing::error;
+use tracing_subscriber::{
+    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+};
 
-mod emulator {
-    use bitvmx_broker::channel::channel::DualChannel;
+// To make this example work, you need to:
+// 1. go to ../BitVMX-CPU and run cargo build --release
+// 2. run the server example first (from bitvmx-broker).
+//      cargo run --release --example server -- --port 10000
+// 3. Then run the job-dispatcher
+//      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1
+// 4. Then trigger one execution
+//      cargo run --release --example challenge --features "emulator"
+
+pub(crate) struct Paths {
+    privk: String,
+    yaml_path: String,
+    checkpoint_prover_path: String,
+    checkpoint_verifier_path: String,
+    commands_file: String,
+}
+
+impl Paths {
+    pub fn new(path_corrector: &str) -> Self {
+        Self {
+            privk: format!("{}../rust-bitvmx-broker/certs/services.key", path_corrector),
+            yaml_path: format!(
+                "{}../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml",
+                path_corrector
+            ),
+            checkpoint_prover_path: format!("{}temp-runs/challenge/42/prover/", path_corrector),
+            checkpoint_verifier_path: format!("{}temp-runs/challenge/42/verifier/", path_corrector),
+            commands_file: format!("{}temp-runs/commands.json", path_corrector),
+        }
+    }
+}
+pub mod emulator {
+    use super::Paths;
+    use bitvmx_broker::identification::identifier::Identifier;
+    use bitvmx_broker::rpc::tls_helper::Cert;
     use bitvmx_broker::rpc::BrokerConfig;
+    use bitvmx_broker::{channel::channel::DualChannel, identification::allow_list::AllowList};
     use bitvmx_cpu_definitions::challenge::EmulatorResultType;
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
     use emulator::executor::utils::FailConfiguration;
+    use std::net::Ipv4Addr;
     use std::{fs, net::IpAddr, path::Path, thread::sleep, time::Duration};
+    use tracing::info;
 
-    const EMULATOR_ID: u32 = 1000;
+    pub(crate) fn run_job(paths: Paths, port: u16) -> Result<(), anyhow::Error> {
+        info!("Starting challenge example...");
+        let privk = fs::read_to_string(paths.privk)?;
+        let my_id = 2;
+        let dest_id = 1;
+        let cert = Cert::new_with_privk(&privk)?;
+        let allow_list =
+            AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
+        let emulator_id = Identifier {
+            pubkey_hash: cert.get_pubk_hash()?,
+            id: dest_id,
+        };
 
-    // To make this example work, you need to:
-    // 1. go to ../BitVMX-CPU and run cargo build --release
-    // 2. run the server example first (from bitvmx-broker).
-    //      cargo run --release --example server -- --port 10000
-    // 3. Then run the job-dispatcher
-    //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000
-    // 4. Then trigger one execution
-    //      cargo run --release --example challenge --features "emulator"
-    pub(crate) fn run_job() -> Result<(), anyhow::Error> {
         let channel = DualChannel::new(
-            &BrokerConfig::new(10000, Some(IpAddr::from([127, 0, 0, 1]))),
-            2,
-        );
+            &BrokerConfig::new(
+                port,
+                Some(IpAddr::from([127, 0, 0, 1])),
+                cert.get_pubk_hash()?,
+            ),
+            cert,
+            Some(my_id),
+            allow_list,
+        )?;
 
         let input = 0;
         let input = vec![17, 17, 17, input];
-        let yaml_path = "../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml".to_string();
-        let checkpoint_prover_path = "temp-runs/challenge/42/prover/".to_string();
-        let checkpoint_verifier_path = "temp-runs/challenge/42/verifier/".to_string();
-        let commands_file = "temp-runs/commands.json".to_string();
+        let yaml_path = paths.yaml_path;
+        let checkpoint_prover_path = paths.checkpoint_prover_path;
+        let checkpoint_verifier_path = paths.checkpoint_verifier_path;
+        let commands_file = paths.commands_file;
 
         let fail_config_prover = Some(FailConfiguration::new_fail_hash(100));
         let fail_config_verifier = None;
@@ -56,17 +103,18 @@ mod emulator {
                 fail_config_prover.clone(),
             ),
         })?;
-        channel.send(EMULATOR_ID, msg)?;
+        channel.send(emulator_id.clone(), msg)?;
 
+        info!("Starting emulator job...");
         let (prover_result, job_id) = wait_for_result(&channel, "ProverExecuteResult", 10, 1)?;
         let (step, hash, halt) =
             EmulatorResultType::from_value(prover_result)?.as_prover_execute()?;
 
-        println!(
+        info!(
             "✅ Got prover result: step {}, hash {}, halt {:?}",
             step, hash, halt
         );
-        println!("with job_id {}", job_id);
+        info!("with job_id {}", job_id);
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
@@ -81,13 +129,13 @@ mod emulator {
                 fail_config_verifier.clone(),
             ),
         })?;
-        channel.send(EMULATOR_ID, msg)?;
+        channel.send(emulator_id.clone(), msg)?;
 
         let (verifier_result, job_id) =
             wait_for_result(&channel, "VerifierCheckExecutionResult", 10, 1)?;
         let step = EmulatorResultType::from_value(verifier_result)?.as_verifier_check()?;
-        println!("✅ Checked verifier result with last step {:?}", step);
-        println!("with job_id {}", job_id);
+        info!("✅ Checked verifier result with last step {:?}", step);
+        info!("with job_id {}", job_id);
 
         let mut v_decision = 0;
         let total_rounds = get_total_rounds(&yaml_path);
@@ -103,14 +151,14 @@ mod emulator {
                     fail_config_prover.clone(),
                 ),
             })?;
-            channel.send(EMULATOR_ID, msg)?;
+            channel.send(emulator_id.clone(), msg)?;
 
             let (prover_hashes_result, job_id) =
                 wait_for_result(&channel, "ProverGetHashesForRoundResult", 10, 1)?;
             let (hashes, mut my_round): (Vec<String>, u8) =
                 EmulatorResultType::from_value(prover_hashes_result)?.as_prover_hashes()?;
-            println!("✅ Got prover hashes: {:?}, round: {:?}", hashes, my_round);
-            println!("with job_id {}", job_id);
+            info!("✅ Got prover hashes: {:?}, round: {:?}", hashes, my_round);
+            info!("with job_id {}", job_id);
 
             let msg = serde_json::to_string(&DispatcherJob {
                 job_id: "uid_job".to_string(),
@@ -123,17 +171,17 @@ mod emulator {
                     fail_config_verifier.clone(),
                 ),
             })?;
-            channel.send(EMULATOR_ID, msg)?;
+            channel.send(emulator_id.clone(), msg)?;
 
             let (verifier_choose_segment_result, job_id) =
                 wait_for_result(&channel, "VerifierChooseSegmentResult", 10, 1)?;
             (v_decision, my_round) =
                 EmulatorResultType::from_value(verifier_choose_segment_result)?.as_v_decision()?;
-            println!(
+            info!(
                 "✅ Got verifier choose segment: v_decision {}, round {}",
                 v_decision, my_round
             );
-            println!("with job_id {}", job_id);
+            info!("with job_id {}", job_id);
         }
 
         let msg = serde_json::to_string(&DispatcherJob {
@@ -146,13 +194,13 @@ mod emulator {
                 fail_config_prover.clone(),
             ),
         })?;
-        channel.send(EMULATOR_ID, msg)?;
+        channel.send(emulator_id.clone(), msg)?;
 
         let (final_trace, job_id) = wait_for_result(&channel, "ProverFinalTraceResult", 10, 1)?;
         let final_trace = EmulatorResultType::from_value(final_trace)?.as_final_trace()?;
 
-        println!("✅ Got prover final trace: {:?}", final_trace);
-        println!("with job_id {}", job_id);
+        info!("✅ Got prover final trace: {:?}", final_trace);
+        info!("with job_id {}", job_id);
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
@@ -165,12 +213,12 @@ mod emulator {
                 force_challenge,
             ),
         })?;
-        channel.send(EMULATOR_ID, msg)?;
+        channel.send(emulator_id, msg)?;
 
         let (result, job_id) = wait_for_result(&channel, "VerifierChooseChallengeResult", 10, 1)?;
         let challenge = EmulatorResultType::from_value(result)?.as_challenge()?;
-        println!("✅ Got verifier choose challenge: {:?}", challenge);
-        println!("with job_id {}", job_id);
+        info!("✅ Got verifier choose challenge: {:?}", challenge);
+        info!("with job_id {}", job_id);
         Ok(())
     }
 
@@ -182,16 +230,17 @@ mod emulator {
     ) -> Result<(serde_json::Value, String), anyhow::Error> {
         for _ in 0..max_attempts {
             if let Some((msg, _from)) = channel.recv()? {
+                info!("Received message: {}", msg);
                 let msg = serde_json::from_str::<ResultMessage>(&msg)?;
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&msg.result) {
                     if json["type"] == expected_type {
                         return Ok((json, msg.job_id));
                     }
                 } else {
-                    println!("Received unstructured result: {}", msg.result);
+                    info!("Received unstructured result: {}", msg.result);
                 }
             } else {
-                println!("Waiting result execution");
+                info!("Waiting result execution");
                 sleep(Duration::from_secs(delay_secs));
             }
         }
@@ -223,9 +272,23 @@ mod emulator {
     }
 }
 
+#[allow(dead_code)]
 fn main() {
-    if let Err(e) = emulator::run_job() {
-        println!("Error: {}", e);
-        error!("{}", e);
+    init_trace().unwrap();
+    let paths = Paths::new("");
+    if let Err(e) = emulator::run_job(paths, 10000) {
+        error!("Error: {}", e);
     }
+}
+
+fn init_trace() -> Result<(), anyhow::Error> {
+    let filter = EnvFilter::builder()
+        .parse("info,tarpc=off") // Include everything at "info"
+        .expect("Invalid filter");
+
+    tracing_subscriber::registry()
+        .with(filter)
+        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
+        .try_init()?;
+    Ok(())
 }
