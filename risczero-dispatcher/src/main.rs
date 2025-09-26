@@ -33,6 +33,14 @@ struct Command {
 
     #[arg(long, default_value = "1")]
     my_id: u8,
+
+    /// Path to the private key file
+    #[arg(long, default_value = "../rust-bitvmx-client/config/keys/services.key")]
+    privkey_path: String,
+
+    /// Path to storage database
+    #[arg(long, default_value = "temp-runs/storage_job.db")]
+    storage_path: String,
 }
 
 fn init_trace() -> Result<(), anyhow::Error> {
@@ -62,7 +70,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     //TODO: obtain these values from a config file
     let my_id = args.my_id;
-    let privk = fs::read_to_string("../rust-bitvmx-broker/certs/services.key")?;
+    let privk = fs::read_to_string(&args.privkey_path)?;
 
     let cert = Cert::new_with_privk(&privk)?;
     let allow_list =
@@ -81,7 +89,7 @@ fn main() -> Result<(), anyhow::Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let storage = get_storage_with_path("temp-runs/storage_job.db")?;
+    let storage = get_storage_with_path(&args.storage_path)?;
     dispatcher_loop::<ProverJobType>(channel, check_interval, running, storage)?;
 
     info!("Shutting down...");
