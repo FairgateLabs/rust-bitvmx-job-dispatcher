@@ -35,7 +35,7 @@ struct Command {
     my_id: u8,
 
     /// Path to the private key file
-    #[arg(long, default_value = "../rust-bitvmx-broker/certs/services.key")]
+    #[arg(long, default_value = "../rust-bitvmx-client/config/keys/services.key")]
     privkey_path: String,
 
     /// Path to storage database
