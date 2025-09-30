@@ -1,10 +1,9 @@
 [package]
 name = "bitvmx-emulator-dispatcher"
-version = "0.1.0"
+version = "0.0.2"
 edition = "2021"
 
 [dependencies]
-bitvmx-broker = { path = "../../rust-bitvmx-broker" }
 tracing = "0.1.26"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde_json = "1.0.64"
@@ -12,11 +11,15 @@ ctrlc = "3.2.0"
 anyhow = "1.0.95"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
-bitvmx-cpu-definitions = { path = "../../BitVMX-CPU/definitions" }
-emulator = { path = "../../BitVMX-CPU/emulator" }                               # Remove in production?
+
+bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", branch = "v.0.0.2" }
+bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", branch = "v.0.0.2" }
+bitvmx-job-dispatcher-types = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", features = [
+    "emulator",
+], branch = "v.0.0.2" }
+#emulator = { path = "../../BitVMX-CPU/emulator" }                                                       # Remove in production?
+bitvmx-job-dispatcher = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", branch = "v.0.0.2" }
 hex = "0.4"
-bitvmx-job-dispatcher-types = { path = "../jobtypes", features = ["emulator"] }
-bitvmx-job-dispatcher = { path = "../dispatcher" }
 clap = { version = "4.5.32", features = ["derive"] }
 
 [dev-dependencies]
