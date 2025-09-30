@@ -64,10 +64,9 @@ impl Msg {
 }
 
 fn resolve_command_path(cmd: &str) -> Result<PathBuf, DispatcherError> {
-    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or(DispatcherError::ParseError)?;
-    Ok(workspace_root.join(cmd))
+    let cwd: PathBuf = env::current_dir()?;
+    info!("Current working dir: {}", cwd.display());
+    Ok(cwd.join(cmd))
 }
 
 pub fn job_key(job_id: &str) -> String {
