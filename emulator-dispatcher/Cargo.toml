@@ -17,7 +17,7 @@ bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git
 bitvmx-job-dispatcher-types = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", features = [
     "emulator",
 ], branch = "v.0.0.2" }
-#emulator = { path = "../../BitVMX-CPU/emulator" }                                                       # Remove in production?
+emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", branch = "v.0.0.2" }
 bitvmx-job-dispatcher = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", branch = "v.0.0.2" }
 hex = "0.4"
 clap = { version = "4.5.32", features = ["derive"] }
