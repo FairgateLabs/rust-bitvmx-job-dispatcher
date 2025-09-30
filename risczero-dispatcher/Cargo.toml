@@ -15,7 +15,7 @@ bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git"
 zk-result = { git = "https://github.com/FairgateLabs/rust-bitvmx-zk-proof.git", branch = "v.0.0.2" }
 hex = "0.4"
 bitvmx-job-dispatcher-types = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", features = [
-    "emulator",
+    "prover",
 ], branch = "v.0.0.2" }
 bitvmx-job-dispatcher = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", branch = "v.0.0.2" }
 clap = { version = "4.5.32", features = ["derive"] }
