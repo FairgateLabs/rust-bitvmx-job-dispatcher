@@ -15,7 +15,7 @@ use crate::{
     dispatcher_module::{Dispatcher, JobContext},
     dispatcher_storage::DispatcherStorage,
 };
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize)]
 pub struct Msg {
