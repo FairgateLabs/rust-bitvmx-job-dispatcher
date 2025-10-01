@@ -91,9 +91,8 @@ where
                             let buf = match fs::read_to_string(&context.command_file) {
                                 Ok(buf) => buf,
                                 Err(e) => {
-                                    let _ = self
-                                        .channel
-                                        .send(id.clone(), "Failed to read file".to_string());
+                                    let _ =
+                                        self.channel.send(&id, "Failed to read file".to_string());
                                     return Err(DispatcherError::IoError(e));
                                 }
                             };
@@ -106,7 +105,7 @@ where
                                     .process_result(&context.job_id, buf, status)?;
 
                             self.channel.send(
-                                id.clone(),
+                                &id,
                                 ResultMessage::new(context.job_id.clone(), result).to_string()?,
                             )?;
 
@@ -120,7 +119,7 @@ where
                         Err(e) => {
                             let _ = self
                                 .channel
-                                .send(id.clone(), "Error checking worker status".to_string());
+                                .send(&id, "Error checking worker status".to_string());
                             Err(DispatcherError::IoError(e))
                         }
                     }
