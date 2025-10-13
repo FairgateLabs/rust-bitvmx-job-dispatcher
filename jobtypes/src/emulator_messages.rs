@@ -224,6 +224,32 @@ impl DispatcherMessage for EmulatorJobType {
 
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
+            EmulatorJobType::VerifierChooseChallengeForReadChallenge(
+                pdf,
+                checkpoint_verifier,
+                command_file,
+                fail_config_verifier,
+                force,
+            ) => {
+                let mut args = vec![
+                    "verifier-choose-challenge-for-read-challenge".to_string(),
+                    "--pdf".to_string(),
+                    pdf.clone(),
+                    "--checkpoint-verifier-path".to_string(),
+                    checkpoint_verifier.clone(),
+                    "--command-file".to_string(),
+                    command_file.clone(),
+                    "--force".to_string(),
+                    force.to_string(),
+                ];
+
+                if let Some(fcv) = fail_config_verifier {
+                    args.push("--fail-config-verifier".to_string());
+                    args.push(fcv.to_string());
+                }
+
+                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
+            }
         }
     }
 
@@ -243,6 +269,9 @@ impl DispatcherMessage for EmulatorJobType {
             }
             EmulatorJobType::ProverFinalTrace(_, _, _, _, _) => "ProverFinalTraceResult",
             EmulatorJobType::VerifierChooseChallenge(_, _, _, _, _, _) => {
+                "VerifierChooseChallengeResult"
+            }
+            EmulatorJobType::VerifierChooseChallengeForReadChallenge(_, _, _, _, _) => {
                 "VerifierChooseChallengeResult"
             }
         };
@@ -292,6 +321,13 @@ pub enum EmulatorJobType {
         Option<FailConfiguration>,
         ForceChallenge,
     ), // pdf, checkpoint_verifier_path, prover_final_trace, command_file, fail_config_verifier, force
+    VerifierChooseChallengeForReadChallenge(
+        String,
+        String,
+        String,
+        Option<FailConfiguration>,
+        ForceChallenge,
+    ), // pdf, checkpoint_verifier_path, command_file, fail_config_verifier, force
 }
 
 impl EmulatorJobType {
