@@ -49,7 +49,7 @@ mod prover {
                 ".".to_string(),
             ),
         })?;
-        channel.send(emulator_id, msg)?;
+        channel.send(&emulator_id, msg)?;
 
         for _ in 0..1000 {
             if let Some((msg, _from)) = channel.recv()? {
