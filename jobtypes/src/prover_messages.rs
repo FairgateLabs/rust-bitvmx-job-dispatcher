@@ -1,3 +1,5 @@
+use std::fs;
+use crate::ResultType;
 use bitvmx_job_dispatcher::{
     dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
 };
@@ -31,12 +33,19 @@ impl DispatcherMessage for ProverJobType {
                 ];
                 Ok((cmd, args, json))
             }
+            ProverJobType::Ping(value, file_path) => {
+                let pong = serde_json::to_string(&ResultType::Pong{value: *value})?;
+                fs::write(file_path, pong)?;
+                Ok(("echo".to_string(), vec!["Ok!".to_string()], file_path.to_string()))
+            }
         }
+
     }
 
     fn message_type(&self) -> String {
         match self {
             ProverJobType::Prove(..) => "ProveResult".to_string(),
+            ProverJobType::Ping(..) => "Pong".to_string()
         }
     }
 }
@@ -44,4 +53,5 @@ impl DispatcherMessage for ProverJobType {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProverJobType {
     Prove(Vec<u8>, String, String),
+    Ping(u64, String)
 }
