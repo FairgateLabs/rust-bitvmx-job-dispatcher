@@ -1,5 +1,3 @@
-use std::fs;
-
 use bitvmx_cpu_definitions::{
     //challenge::{ChallengeType, EmulatorResultType},
     trace::TraceRWStep,
@@ -15,8 +13,6 @@ use emulator::{
     executor::utils::FailConfiguration,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::ResultType;
 
 //windows
 #[cfg(target_os = "windows")]
@@ -254,11 +250,6 @@ impl DispatcherMessage for EmulatorJobType {
 
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
-            EmulatorJobType::Ping(value, command_file) => {
-                let pong = serde_json::to_string(&ResultType::Pong{value: *value})?;
-                fs::write(command_file, pong)?;
-                Ok(("echo".to_string(), vec!["Ok!".to_string()], command_file.to_string()))
-            }
         }
     }
 
@@ -283,7 +274,6 @@ impl DispatcherMessage for EmulatorJobType {
             EmulatorJobType::VerifierChooseChallengeForReadChallenge(_, _, _, _, _) => {
                 "VerifierChooseChallengeResult"
             }
-            EmulatorJobType::Ping(..) => "Pong",
         };
         msg_type.to_string()
     }
@@ -338,7 +328,6 @@ pub enum EmulatorJobType {
         Option<FailConfiguration>,
         ForceChallenge,
     ), // pdf, checkpoint_verifier_path, command_file, fail_config_verifier, force
-    Ping(u64, String)
 }
 
 impl EmulatorJobType {

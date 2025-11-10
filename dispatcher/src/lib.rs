@@ -24,11 +24,11 @@ use dispatcher_module::{Dispatcher, JobContext};
 use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     dispatcher_error::DispatcherError,
-    helper::{persist_job, process_msg, Msg},
+    helper::{Msg, PingMessages, persist_job, process_msg},
 };
 
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
@@ -74,9 +74,26 @@ where
 
         if let Some(msg) = msg {
             let msg = Msg::from_msg(msg.clone());
-            let (child, context) = process_msg(&mut self.dispatcher, &msg.raw)?;
-            persist_job(&context, &msg, self.storage.clone())?;
-            self.workers.push((child, msg.id, context));
+            if msg.raw.contains("Ping"){
+                let message: PingMessages = serde_json::from_str(&msg.raw)?;
+                let value = match message {
+                    PingMessages::Ping { value } => value,
+                    PingMessages::Pong { .. } => {
+                        warn!("Job Dispatcher should not receive Pong");
+                        return Ok(true);
+                    },
+                };
+                let pong = serde_json::to_string(&PingMessages::Pong{value})?;
+
+                self.channel.send(
+                    &msg.id,
+                    pong,
+                )?;
+            }else {
+                let (child, context) = process_msg(&mut self.dispatcher, &msg.raw)?;
+                persist_job(&context, &msg, self.storage.clone())?;
+                self.workers.push((child, msg.id, context));
+            }
         }
 
         if !self.workers.is_empty() {

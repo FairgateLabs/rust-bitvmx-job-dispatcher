@@ -17,6 +17,14 @@ use crate::{
 };
 use std::path::PathBuf;
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum PingMessages {
+    Ping { value: u64 },
+    Pong { value: u64 },
+}
+
+
 #[derive(Serialize, Deserialize)]
 pub struct Msg {
     pub raw: String,
@@ -64,9 +72,13 @@ impl Msg {
 }
 
 fn resolve_command_path(cmd: &str) -> Result<PathBuf, DispatcherError> {
-    let cwd: PathBuf = env::current_dir()?;
-    info!("Current working dir: {}", cwd.display());
-    Ok(cwd.join(cmd))
+    if !["sh"].contains(&cmd) {
+        let cwd: PathBuf = env::current_dir()?;
+        info!("Current working dir: {}", cwd.display());
+        Ok(cwd.join(cmd))
+    } else {
+        Ok(PathBuf::from(cmd))
+    }  
 }
 
 pub fn job_key(job_id: &str) -> String {
