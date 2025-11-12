@@ -28,7 +28,7 @@ use tracing::{info, warn};
 
 use crate::{
     dispatcher_error::DispatcherError,
-    helper::{Msg, PingMessages, persist_job, process_msg},
+    helper::{Msg, PingMessage, persist_job, process_msg},
 };
 
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
@@ -75,15 +75,15 @@ where
         if let Some(msg) = msg {
             let msg = Msg::from_msg(msg.clone());
             if msg.raw.contains("Ping"){
-                let message: PingMessages = serde_json::from_str(&msg.raw)?;
+                let message: PingMessage = serde_json::from_str(&msg.raw)?;
                 let value = match message {
-                    PingMessages::Ping { value } => value,
-                    PingMessages::Pong { .. } => {
+                    PingMessage::Ping { value } => value,
+                    PingMessage::Pong { .. } => {
                         warn!("Job Dispatcher should not receive Pong");
                         return Ok(true);
                     },
                 };
-                let pong = serde_json::to_string(&PingMessages::Pong{value})?;
+                let pong = serde_json::to_string(&PingMessage::Pong{value})?;
 
                 self.channel.send(
                     &msg.id,

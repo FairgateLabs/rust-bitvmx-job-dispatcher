@@ -13,11 +13,11 @@ use tracing_subscriber::{
 //      cargo run --release --example challenge --features "emulator"
 
 pub(crate) struct Paths {
-    privk: String,
-    yaml_path: String,
-    checkpoint_prover_path: String,
-    checkpoint_verifier_path: String,
-    commands_file: String,
+    pub privk: String,
+    pub yaml_path: String,
+    pub checkpoint_prover_path: String,
+    pub checkpoint_verifier_path: String,
+    pub commands_file: String,
 }
 
 impl Paths {
