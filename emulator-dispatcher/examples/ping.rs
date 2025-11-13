@@ -49,26 +49,18 @@ pub mod emulator {
             Some(my_id),
             allow_list,
         )?;
-        let value = 42;
-
-        let msg = serde_json::to_string(&PingMessage::Ping { value })?;
+        
+        let msg = serde_json::to_string(&PingMessage::Ping)?;
         channel.send(&emulator_id.clone(), msg)?;
 
         info!("Waiting Pong Response...");
         let msg = wait_for_result(&channel, 10, 1)?;
 
         match msg {
-            PingMessage::Pong { value: received_value } => {
-                if received_value != value {
-                    return Err(anyhow::anyhow!(
-                        "Received incorrect Pong value: expected {}, got {}",
-                        value,
-                        received_value
-                    ));
-                }
-                info!("Received Pong with value: {}", value);
+            PingMessage::Pong => {
+                info!("Received Pong");
             }
-            PingMessage::Ping { .. } => {
+            PingMessage::Ping => {
                 return Err(anyhow::anyhow!("Unexpected Ping message received"));
             }
         }

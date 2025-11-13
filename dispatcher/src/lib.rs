@@ -24,7 +24,7 @@ use dispatcher_module::{Dispatcher, JobContext};
 use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     dispatcher_error::DispatcherError,
@@ -74,16 +74,16 @@ where
 
         if let Some(msg) = msg {
             let msg = Msg::from_msg(msg.clone());
-            if msg.raw.contains("Ping"){
-                let message: PingMessage = serde_json::from_str(&msg.raw)?;
-                let value = match message {
-                    PingMessage::Ping { value } => value,
-                    PingMessage::Pong { .. } => {
+            if let Some(message) = serde_json::from_str::<PingMessage>(&msg.raw).ok() {
+                match message {
+                    PingMessage::Ping => debug!("Received Ping"),
+                    PingMessage::Pong => {
                         warn!("Job Dispatcher should not receive Pong");
-                        return Ok(true);
+                        return Ok(false);
                     },
-                };
-                let pong = serde_json::to_string(&PingMessage::Pong{value})?;
+                }
+
+                let pong = serde_json::to_string(&PingMessage::Pong)?;
 
                 self.channel.send(
                     &msg.id,

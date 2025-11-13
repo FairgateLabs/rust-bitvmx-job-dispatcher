@@ -20,8 +20,8 @@ use std::path::PathBuf;
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum PingMessage {
-    Ping { value: u64 },
-    Pong { value: u64 },
+    Ping,
+    Pong,
 }
 
 
