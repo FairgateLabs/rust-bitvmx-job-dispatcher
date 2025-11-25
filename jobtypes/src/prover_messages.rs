@@ -32,6 +32,7 @@ impl DispatcherMessage for ProverJobType {
                 Ok((cmd, args, json))
             }
         }
+
     }
 
     fn message_type(&self) -> String {
