@@ -4,4 +4,6 @@ output.json
 snark-seal.json
 stark-proof.bin
 /temp-runs
+/runs
+/logs
 .DS_Store
