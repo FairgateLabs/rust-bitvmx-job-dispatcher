@@ -260,7 +260,7 @@ impl DispatcherMessage for EmulatorJobType {
 
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
-            EmulatorJobType::ProverGetCosignedBitsAndHashes(
+            EmulatorJobType::ProverGetHashesAndStep(
                 pdf,
                 checkpoint_prover,
                 v_decision,
@@ -268,7 +268,7 @@ impl DispatcherMessage for EmulatorJobType {
                 fail_config_prover,
             ) => {
                 let mut args = vec![
-                    "prover-get-cosigned-bits-and-hashes".to_string(),
+                    "prover-get-hashes-and-step".to_string(),
                     "--pdf".to_string(),
                     pdf.clone(),
                     "--checkpoint-prover-path".to_string(),
@@ -309,8 +309,8 @@ impl DispatcherMessage for EmulatorJobType {
             EmulatorJobType::VerifierChooseChallengeForReadChallenge(_, _, _, _, _, _, _) => {
                 "VerifierChooseChallengeResult"
             }
-            EmulatorJobType::ProverGetCosignedBitsAndHashes(_, _, _, _, _) => {
-                "ProverGetCosignedBitsAndHashesResult"
+            EmulatorJobType::ProverGetHashesAndStep(_, _, _, _, _) => {
+                "ProverGetHashesAndStepResult"
             }
         };
         msg_type.to_string()
@@ -354,7 +354,7 @@ pub enum EmulatorJobType {
     VerifierChooseChallenge(
         String,
         String,
-        (TraceRWStep, String, String, Vec<u32>), // final_trace, resigned_step_hash, resigned_next_hash, cosigned_decision_bits
+        (TraceRWStep, String, String, u64), // final_trace, resigned_step_hash, resigned_next_hash, conflict_step
         String,
         Option<FailConfiguration>,
         ForceChallenge,
@@ -368,7 +368,7 @@ pub enum EmulatorJobType {
         Option<FailConfiguration>,
         ForceChallenge,
     ), // pdf, checkpoint_verifier_path, command_file, resigned_step_hash, resigned_next_hash, fail_config_verifier, force
-    ProverGetCosignedBitsAndHashes(String, String, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, v_decision, command_file, fail_config_prover
+    ProverGetHashesAndStep(String, String, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, v_decision, command_file, fail_config_prover
 }
 
 impl EmulatorJobType {
