@@ -199,6 +199,8 @@ impl DispatcherMessage for EmulatorJobType {
                 pdf,
                 checkpoint_verifier,
                 prover_final_trace,
+                resigned_step_hash,
+                resigned_next_hash,
                 command_file,
                 fail_config_verifier,
                 force,
@@ -210,11 +212,11 @@ impl DispatcherMessage for EmulatorJobType {
                     "--checkpoint-verifier-path".to_string(),
                     checkpoint_verifier.clone(),
                     "--prover-final-trace".to_string(),
-                    serde_json::to_string(&prover_final_trace.0)?,
+                    serde_json::to_string(&prover_final_trace)?,
                     "--resigned-step-hash".to_string(),
-                    prover_final_trace.1.clone(),
+                    resigned_step_hash.clone(),
                     "--resigned-next-hash".to_string(),
-                    prover_final_trace.2.clone(),
+                    resigned_next_hash.clone(),
                     "--command-file".to_string(),
                     command_file.clone(),
                     "--force".to_string(),
@@ -303,7 +305,7 @@ impl DispatcherMessage for EmulatorJobType {
                 "VerifierChooseSegmentResult"
             }
             EmulatorJobType::ProverFinalTrace(_, _, _, _, _) => "ProverFinalTraceResult",
-            EmulatorJobType::VerifierChooseChallenge(_, _, _, _, _, _) => {
+            EmulatorJobType::VerifierChooseChallenge(_, _, _, _, _, _, _, _) => {
                 "VerifierChooseChallengeResult"
             }
             EmulatorJobType::VerifierChooseChallengeForReadChallenge(_, _, _, _, _, _, _) => {
@@ -354,11 +356,13 @@ pub enum EmulatorJobType {
     VerifierChooseChallenge(
         String,
         String,
-        (TraceRWStep, String, String, u64), // final_trace, resigned_step_hash, resigned_next_hash, conflict_step
+        TraceRWStep,
+        String,
+        String,
         String,
         Option<FailConfiguration>,
         ForceChallenge,
-    ), // pdf, checkpoint_verifier_path, prover_final_trace, command_file, fail_config_verifier, force
+    ), // pdf, checkpoint_verifier_path, prover_final_trace, resigned_step_hash, resigned_next_hash, command_file, fail_config_verifier, force
     VerifierChooseChallengeForReadChallenge(
         String,
         String,
