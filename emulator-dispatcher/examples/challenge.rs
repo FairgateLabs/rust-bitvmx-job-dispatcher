@@ -209,7 +209,9 @@ pub mod emulator {
             job_type: EmulatorJobType::VerifierChooseChallenge(
                 yaml_path.clone(),
                 checkpoint_verifier_path.clone(),
-                final_trace,
+                final_trace.0,
+                final_trace.1,
+                final_trace.2,
                 commands_file.clone(),
                 fail_config_verifier.clone(),
                 force_challenge,
