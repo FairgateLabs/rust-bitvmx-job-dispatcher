@@ -40,7 +40,7 @@ pub mod emulator {
     use bitvmx_broker::rpc::tls_helper::Cert;
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_broker::{channel::channel::DualChannel, identification::allow_list::AllowList};
-    use bitvmx_cpu_definitions::challenge::EmulatorResultType;
+    use bitvmx_cpu_definitions::challenge::{EmulatorResultType, ProverFinalTraceType};
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
     use emulator::executor::utils::FailConfiguration;
@@ -204,25 +204,38 @@ pub mod emulator {
         info!("✅ Got prover final trace: {:?}", final_trace);
         info!("with job_id {}", job_id);
 
-        let msg = serde_json::to_string(&DispatcherJob {
-            job_id: "uid_job".to_string(),
-            job_type: EmulatorJobType::VerifierChooseChallenge(
-                yaml_path.clone(),
-                checkpoint_verifier_path.clone(),
-                final_trace.0,
-                final_trace.1,
-                final_trace.2,
-                commands_file.clone(),
-                fail_config_verifier.clone(),
-                force_challenge,
-            ),
-        })?;
-        channel.send(&emulator_id, msg)?;
+        match final_trace {
+            ProverFinalTraceType::ChallengeStep => {
+                info!("Prover is going to challenge the selected step");
+            }
+            ProverFinalTraceType::FinalTraceWithHashesAndStep {
+                trace,
+                step_hash,
+                next_hash,
+                step: _,
+            } => {
+                let msg = serde_json::to_string(&DispatcherJob {
+                    job_id: "uid_job".to_string(),
+                    job_type: EmulatorJobType::VerifierChooseChallenge(
+                        yaml_path.clone(),
+                        checkpoint_verifier_path.clone(),
+                        trace,
+                        step_hash,
+                        next_hash,
+                        commands_file.clone(),
+                        fail_config_verifier.clone(),
+                        force_challenge,
+                    ),
+                })?;
+                channel.send(&emulator_id, msg)?;
 
-        let (result, job_id) = wait_for_result(&channel, "VerifierChooseChallengeResult", 10, 1)?;
-        let challenge = EmulatorResultType::from_value(result)?.as_challenge()?;
-        info!("✅ Got verifier choose challenge: {:?}", challenge);
-        info!("with job_id {}", job_id);
+                let (result, job_id) =
+                    wait_for_result(&channel, "VerifierChooseChallengeResult", 10, 1)?;
+                let challenge = EmulatorResultType::from_value(result)?.as_challenge()?;
+                info!("✅ Got verifier choose challenge: {:?}", challenge);
+                info!("with job_id {}", job_id);
+            }
+        };
         Ok(())
     }
 
