@@ -1,6 +1,6 @@
 [package]
 name = "bitvmx-risczero-dispatcher"
-version = "0.0.2"
+version = "0.5.0"
 edition = "2021"
 
 [dependencies]
@@ -11,13 +11,13 @@ ctrlc = "3.2.0"
 anyhow = "1.0.95"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
-bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", branch = "v.0.0.2" }
-zk-result = { git = "https://github.com/FairgateLabs/rust-bitvmx-zk-proof.git", branch = "v.0.0.2" }
+bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.5.0" }
+zk-result = { git = "https://github.com/FairgateLabs/rust-bitvmx-zk-proof.git", tag = "v0.5.0" }
 hex = "0.4"
 bitvmx-job-dispatcher-types = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", features = [
     "prover",
-], branch = "v.0.0.2" }
-bitvmx-job-dispatcher = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", branch = "v.0.0.2" }
+], tag = "v0.5.0" }
+bitvmx-job-dispatcher = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", tag = "v0.5.0" }
 clap = { version = "4.5.32", features = ["derive"] }
 
 [dev-dependencies]

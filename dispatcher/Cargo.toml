@@ -1,6 +1,6 @@
 [package]
 name = "bitvmx-job-dispatcher"
-version = "0.0.2"
+version = "0.5.0"
 edition = "2021"
 
 [dependencies]
@@ -12,8 +12,8 @@ anyhow = "1.0.95"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
 hex = "0.4"
-bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", branch = "v.0.0.2" }
-rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", branch = "v.0.0.2" }
+bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.5.0" }
+rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.5.0" }
 env = "1.0.1"
 
 [dev-dependencies]
