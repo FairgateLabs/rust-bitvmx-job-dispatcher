@@ -1,14 +1,12 @@
 //TODO: Personalized Errors
 use std::{
-    net::{IpAddr, Ipv4Addr},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
+    fs, net::{IpAddr, Ipv4Addr}, sync::{
+        Arc, atomic::{AtomicBool, Ordering}
+    }
 };
 use anyhow::Result;
 use aws_service::dispatcher_loop;
-use bitvmx_broker::{channel::channel::DualChannel, rpc::BrokerConfig};
+use bitvmx_broker::{channel::channel::DualChannel, identification::allow_list::AllowList, rpc::{BrokerConfig, tls_helper::Cert}};
 
 use clap::{command, Parser};
 use tracing::info;
@@ -24,6 +22,25 @@ struct Command {
     ip: String,
     #[arg(long)]
     port: u16,
+
+
+    #[arg(long, default_value = "0")]
+    my_id: u8,
+
+    /// Path to the private key file
+    #[arg(long, default_value = "../rust-bitvmx-client/config/keys/emulator.key")]
+    my_priv_key: String,
+
+    /// PubKeyHash of the broker service
+    #[arg(
+        long,
+        default_value = "155c24337976116159e73e386bb721b8c5e219ae18696ef4fde6b7dedadfc570"
+    )]
+    broker_pubk_hash: String,
+
+    /// Path to storage database
+    #[arg(long, default_value = "temp-runs/storage_job.db")]
+    storage_path: String,
 }
 
 fn init_trace() -> Result<(), anyhow::Error> {
@@ -53,8 +70,18 @@ fn main() -> Result<(), anyhow::Error> {
         .map(|ip| ip.octets())
         .expect("Invalid IPv4 address");
 
-    let config = BrokerConfig::new(args.port, Some(IpAddr::from(ip)));
-    let channel = DualChannel::new(&config, PROVER_ID);
+    //TODO: obtain these values from a config file
+    let my_id = args.my_id;
+    let privk = fs::read_to_string(&args.my_priv_key)?;
+
+    let cert = Cert::new_with_privk(&privk)?;
+
+    let allow_list = AllowList::new();
+    allow_list.lock().unwrap().allow_all();
+
+    let config: BrokerConfig =
+        BrokerConfig::new(args.port, Some(IpAddr::from(ip)), args.broker_pubk_hash);
+    let channel = DualChannel::new(&config, cert, Some(my_id), allow_list)?;
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));

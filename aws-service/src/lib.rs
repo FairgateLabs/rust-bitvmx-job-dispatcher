@@ -4,7 +4,7 @@ mod dispatcher_module;
 
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
 use aws_sdk_ec2::{Client as Ec2Client, Error as EC2Error};
-use bitvmx_broker::channel::channel::DualChannel;
+use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
 use std::{
     collections::HashMap,
     sync::{
@@ -28,8 +28,8 @@ pub fn process_msg(dispatcher: &mut Dispatcher, msg: &str) -> Option<JobContext>
 
 pub struct DispatcherHandler {
     channel: DualChannel,
-    ready_instance_ids: HashMap<String, (bool, Option<JobContext>, Option<u32>)>,
-    pending_jobs: Vec<(u32, JobContext)>,
+    ready_instance_ids: HashMap<String, (bool, Option<JobContext>, Option<Identifier>)>,
+    pending_jobs: Vec<(Identifier, JobContext)>,
     dispatcher: Dispatcher,
 }
 
@@ -100,7 +100,7 @@ impl DispatcherHandler {
                     if let Some(result) = self.dispatcher.process_result(&job_id)
                     {
                         if let Err(e) = self.channel.send(
-                            id.unwrap(),
+                            &id.clone().unwrap(),
                             ResultMessage::new(job_id.clone(), result)
                                 .to_string(),
                         ) {
