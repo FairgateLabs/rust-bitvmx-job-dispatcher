@@ -1,10 +1,19 @@
-use crate::{dispatcher_error::DispatcherError, dispatcher_job::{DispatcherJob, ProverJobType}};
+use crate::{
+    dispatcher_error::DispatcherError,
+    dispatcher_job::{DispatcherJob, ProverJobType},
+};
 use aws_config::{BehaviorVersion, SdkConfig, meta::region::RegionProviderChain};
-use aws_sdk_ec2::{Client as Ec2Client, Error as EC2Error};
-use aws_sdk_s3::{Client as S3Client, Error as S3Error};
-use aws_sdk_ssm::{Client as SsmClient, Error as SsmError};
-use std::{collections::HashMap, fs};
-use tokio::{fs::File};
+use aws_sdk_ec2::{Client as Ec2Client, types::SummaryStatus};
+use aws_sdk_s3::Client as S3Client;
+use aws_sdk_ssm::{
+    Client as SsmClient,
+    types::{CommandInvocationStatus, PingStatus},
+};
+use std::{collections::HashMap, fs, time::Duration};
+use tokio::{
+    fs::File,
+    time::{Instant, sleep},
+};
 use tracing::{debug, error, info};
 
 #[derive(Clone)]
@@ -45,12 +54,13 @@ impl Dispatcher {
         }
 
         let job_context = match msg.job_type {
-            ProverJobType::Prove { input_value, elf, command_file } => {
+            ProverJobType::Prove(input_value, elf, command_file) => {
                 JobContext::new(msg.job_id.clone(), input_value, elf, command_file)
-            },
+            }
         };
 
-        self.jobs.insert(msg.job_id.clone(), job_context.command_file.clone());
+        self.jobs
+            .insert(msg.job_id.clone(), job_context.command_file.clone());
 
         Ok(job_context)
     }
@@ -60,7 +70,7 @@ impl Dispatcher {
     }
 
     pub fn process_result(&mut self, id: &str) -> Option<String> {
-        if let Some(command_file) = self.jobs.remove(id){
+        if let Some(command_file) = self.jobs.remove(id) {
             match fs::read_to_string(&command_file) {
                 Ok(buf) => {
                     info!("Worker output from file: {}", buf);
@@ -71,7 +81,7 @@ impl Dispatcher {
                             return None;
                         }
                     }
-                },
+                }
                 Err(e) => {
                     error!("Error reading command file {}: {:?}", command_file, e);
                     return None;
@@ -90,39 +100,159 @@ impl Dispatcher {
         None
     }
 
-    pub async fn manage_petition(&self, instance_id: &str, context: JobContext) -> Result<(), DispatcherError> {
-        let (ec2_client, config) = self
-            .create_service()
-            .await
-            .expect("Failed to run the service");
+    pub async fn manage_petition(
+        &self,
+        instance_id: &str,
+        context: JobContext,
+    ) -> Result<(), DispatcherError> {
+        let (ec2_client, config) = self.create_service().await;
 
-        let client = SsmClient::new(&config);
+        let ssm_client = SsmClient::new(&config);
+        let s3_client = S3Client::new(&config);
 
-        debug!("Starting instance {}", instance_id);
+        info!("Starting instance {}", instance_id);
         self.start_instance(&ec2_client, instance_id)
             .await
             .expect("Could not start the instance");
-        debug!("Instance started");
+        info!("Instance started");
 
-        self.send_command(&client, instance_id, "".to_string())
+        self.upload_file(&s3_client, &context.input_value).await?;
+
+        info!(
+            "Checking if instance {} is able to run the command",
+            instance_id
+        );
+        self.check_instance_status(&ec2_client, &ssm_client, instance_id)
+            .await
+            .expect("Could not check the instance status");
+        info!("Instance {} is able to run the command", instance_id);
+
+        info!("Sending command to instance {}", instance_id);
+        let command_id = self
+            .send_command(&ssm_client, instance_id)
             .await
             .expect("Could not send the command");
+        info!("Command sent to instance {}", instance_id);
 
-        self.download_file(&config)
+        self.wait_for_command_completion(&ssm_client, instance_id, &command_id)
+            .await?;
+
+        self.download_file(&s3_client)
             .await
             .expect("Could not download the file");
 
-        debug!("File downloaded");
+        info!("File downloaded");
 
-        debug!("Stopping instance {}", instance_id);
+        info!("Stopping instance {}", instance_id);
         self.stop_instance(&ec2_client, instance_id)
             .await
             .expect("Could not stop the instance");
-        debug!("Instance stopped");
+        info!("Instance stopped");
         Ok(())
     }
 
-    async fn create_service(&self) -> Result<(Ec2Client, SdkConfig), EC2Error> {
+    async fn upload_file(
+        &self,
+        client: &S3Client,
+        input_value: &Vec<u8>,
+    ) -> Result<(), DispatcherError> {
+        let bucket = "prueba-zkp";
+        let key = "input.bin";
+
+        client
+            .put_object()
+            .bucket(bucket)
+            .key(key)
+            .body(input_value.clone().into())
+            .send()
+            .await
+            .map_err(|e| DispatcherError::S3Error(e.into()))?;
+
+        info!("File uploaded to S3: s3://{}/{}", bucket, key);
+
+        Ok(())
+    }
+    async fn check_instance_status(
+        &self,
+        client: &Ec2Client,
+        ssm_client: &SsmClient,
+        instance_id: &str,
+    ) -> Result<(), DispatcherError> {
+        loop {
+            let resp = client
+                .describe_instances()
+                .instance_ids(instance_id)
+                .send()
+                .await
+                .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
+
+            let state = resp
+                .reservations()
+                .first()
+                .and_then(|r| r.instances().first())
+                .and_then(|i| i.state())
+                .and_then(|s| s.name())
+                .map(|s| s.as_str())
+                .unwrap_or("unknown");
+
+            if state == "running" {
+                break;
+            }
+
+            sleep(Duration::from_secs(1)).await;
+        }
+
+        info!("Instance is running, checking system and instance status...");
+
+        loop {
+            let resp = client
+                .describe_instance_status()
+                .instance_ids(instance_id)
+                .include_all_instances(true)
+                .send()
+                .await
+                .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
+
+            if let Some(status) = resp.instance_statuses().first() {
+                let sys_ok =
+                    status.system_status().and_then(|s| s.status()) == Some(&SummaryStatus::Ok);
+                let inst_ok =
+                    status.instance_status().and_then(|s| s.status()) == Some(&SummaryStatus::Ok);
+
+                if sys_ok && inst_ok {
+                    break;
+                }
+            }
+
+            sleep(Duration::from_secs(1)).await;
+        }
+
+        info!("Instance Status is ok, checking SSM status...");
+
+        loop {
+            let resp = ssm_client
+                .describe_instance_information()
+                .send()
+                .await
+                .map_err(|e| DispatcherError::SsmError(e.into()))?;
+
+            let online = resp.instance_information_list().iter().any(|i| {
+                i.instance_id() == Some(instance_id) && i.ping_status() == Some(&PingStatus::Online)
+            });
+
+            if online {
+                break;
+            }
+
+            sleep(Duration::from_secs(1)).await;
+        }
+
+        info!("SSM status is online");
+
+        Ok(())
+    }
+
+    async fn create_service(&self) -> (Ec2Client, SdkConfig) {
         let region_provider = RegionProviderChain::default_provider().or_else("us-east-2");
         let behavior = BehaviorVersion::latest();
         let config = aws_config::defaults(behavior)
@@ -131,25 +261,35 @@ impl Dispatcher {
             .await;
         let client = Ec2Client::new(&config);
 
-        Ok((client, config))
+        (client, config)
     }
 
-    async fn start_instance(&self, client: &Ec2Client, instance_id: &str) -> Result<(), EC2Error> {
+    async fn start_instance(
+        &self,
+        client: &Ec2Client,
+        instance_id: &str,
+    ) -> Result<(), DispatcherError> {
         client
             .start_instances()
             .instance_ids(instance_id)
             .send()
-            .await?;
+            .await
+            .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
 
         Ok(())
     }
 
-    async fn stop_instance(&self, client: &Ec2Client, instance_id: &str) -> Result<(), EC2Error> {
+    async fn stop_instance(
+        &self,
+        client: &Ec2Client,
+        instance_id: &str,
+    ) -> Result<(), DispatcherError> {
         client
             .stop_instances()
             .instance_ids(instance_id)
             .send()
-            .await?;
+            .await
+            .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
 
         Ok(())
     }
@@ -158,9 +298,20 @@ impl Dispatcher {
         &self,
         client: &SsmClient,
         instance_id: &str,
-        zkp_to_run: String,
-    ) -> Result<(), SsmError> {
-        let command_to_send = "echo 'Hello from Rust SDK' > /tmp/greeting.txt && aws s3 cp /tmp/greeting.txt s3://prueba2025b1/greeting.txt > /tmp/upload.log 2>&1";
+    ) -> Result<String, DispatcherError> {
+        // aws s3 cp s3://prueba-zkp/input.bin" /tmp/input.bin &&
+        // ./rust-bitvmx-zk-proof/target/release/host prove-stark \
+        //                 --input /tmp/input.bin \
+        //                 --elf ./rust-bitvmx-zk-proof/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin \
+        //                 --output /tmp/stark_proof.bin \
+        //                 --json /tmp/output.json \
+        //                 && ../rust-bitvmx-zk-proof/target/release/host \
+        //                 prove-snark \
+        //                 --input /tmp/stark_proof.bin \
+        //                 --json /tmp/output.json \
+        //                 --json-input /tmp/output.json
+        // && aws s3 cp /tmp/output.json s3://prueba-zkp/output.json > /tmp/upload.log 2>&1
+        let command_to_send = "echo 'Hello from Rust SDK' > /tmp/output.json && aws s3 cp /tmp/output.json s3://prueba-zkp/output.json > /tmp/upload.log 2>&1";
         let command = client
             .send_command()
             .instance_ids(instance_id)
@@ -168,7 +319,8 @@ impl Dispatcher {
             .comment("Create file and upload to S3")
             .parameters("commands", vec![command_to_send.to_string()])
             .send()
-            .await?;
+            .await
+            .map_err(|e| DispatcherError::SsmError(e.into()))?;
 
         let command_id = command
             .command()
@@ -178,17 +330,68 @@ impl Dispatcher {
 
         info!("Command sent. ID: {}", command_id);
 
-        Ok(())
+        Ok(command_id.to_string())
     }
 
-    async fn download_file(&self, config: &SdkConfig) -> Result<(), S3Error> {
-        let client = S3Client::new(&config);
+    async fn wait_for_command_completion(
+        &self,
+        client: &SsmClient,
+        instance_id: &str,
+        command_id: &str,
+    ) -> Result<(), DispatcherError> {
+        let time = Instant::now();
+        loop {
+            let inv = client
+                .get_command_invocation()
+                .command_id(command_id)
+                .instance_id(instance_id)
+                .send()
+                .await
+                .map_err(|e| DispatcherError::SsmError(e.into()))?;
 
-        let bucket = "prueba2025b1";
-        let key = "greeting.txt";
-        let resp = client.get_object().bucket(bucket).key(key).send().await?;
+            match inv.status() {
+                Some(status) => match status {
+                    CommandInvocationStatus::Success => {
+                        info!(
+                            "Command execution succeeded, duration: {:?}",
+                            time.elapsed()
+                        );
+                        break;
+                    }
+                    CommandInvocationStatus::InProgress | CommandInvocationStatus::Pending => {
+                        info!(
+                            "Command is still in progress, time passed: {:?}",
+                            time.elapsed()
+                        );
+                    }
+                    _ => {
+                        error!("Command execution failed with status: {:?}", status);
+                        return Err(DispatcherError::CommandExecutionFailed);
+                    }
+                },
+                None => {
+                    error!("No status received for command invocation");
+                    return Err(DispatcherError::CommandExecutionFailed);
+                }
+            }
 
-        let mut file = File::create("downloaded.txt")
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        Ok(())
+    }
+    async fn download_file(&self, client: &S3Client) -> Result<(), DispatcherError> {
+        let bucket = "prueba-zkp";
+        let key = "output.json";
+        let resp = client
+            .get_object()
+            .bucket(bucket)
+            .key(key)
+            .send()
+            .await
+            .map_err(|e| DispatcherError::S3Error(e.into()))?;
+
+        let mut file = File::create("output.json")
             .await
             .expect("Could not create the file");
         let mut body = resp.body.into_async_read();
@@ -197,48 +400,5 @@ impl Dispatcher {
             .expect("Could not copy the data to the file");
 
         Ok(())
-    }
-
-    pub async fn is_instance_stopped(
-        &self,
-        ec2: &Ec2Client,
-        instance_id: &str,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        debug!("Checking if instance {} is stopped...", instance_id);
-        let resp = ec2
-            .describe_instances()
-            .instance_ids(instance_id)
-            .send()
-            .await?;
-
-        let state = resp
-            .reservations()
-            .first()
-            .unwrap()
-            .instances()
-            .first()
-            .unwrap()
-            .state();
-
-        match state {
-            Some(s) => {
-                let name = s.name().unwrap().as_str();
-                if name == "stopped" {
-                    debug!("Instance is stopped, ready to run command");
-                    return Ok(true);
-                } else if name == "shutting-down" || name == "terminated" {
-                    debug!("Instance is shutting down or terminated, cannot run command");
-                    return Ok(false);
-                } else {
-                    debug!("Instance is not stopped yet, current state: {name}");
-                    return Ok(false);
-                }
-            }
-
-            None => {
-                error!("Instance state is unknown");
-                return Ok(false);
-            }
-        }
     }
 }

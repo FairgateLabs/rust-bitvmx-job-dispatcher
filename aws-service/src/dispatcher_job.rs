@@ -8,11 +8,7 @@ pub struct DispatcherJob {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProverJobType {
-    Prove{
-        input_value: Vec<u8>,
-        elf: String,
-        command_file: String,
-    },
+    Prove(Vec<u8>, String, String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]

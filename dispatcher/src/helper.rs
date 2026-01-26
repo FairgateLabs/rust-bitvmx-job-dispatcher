@@ -24,7 +24,6 @@ pub enum PingMessage {
     Pong,
 }
 
-
 #[derive(Serialize, Deserialize)]
 pub struct Msg {
     pub raw: String,
@@ -78,7 +77,7 @@ fn resolve_command_path(cmd: &str) -> Result<PathBuf, DispatcherError> {
         Ok(cwd.join(cmd))
     } else {
         Ok(PathBuf::from(cmd))
-    }  
+    }
 }
 
 pub fn job_key(job_id: &str) -> String {

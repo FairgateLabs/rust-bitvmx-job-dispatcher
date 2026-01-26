@@ -1,10 +1,9 @@
-mod prover {
+pub mod prover {
+    use aws_service::dispatcher_job::{DispatcherJob, ProverJobType};
     use bitvmx_broker::identification::allow_list::AllowList;
     use bitvmx_broker::identification::identifier::Identifier;
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_broker::{channel::channel::DualChannel, rpc::tls_helper::Cert};
-    use bitvmx_job_dispatcher::dispatcher_job::DispatcherJob;
-    use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
     use std::net::{IpAddr, Ipv4Addr};
     use std::{fs, thread::sleep, time::Duration};
     use zk_result::ResultType as ProverResultType;
@@ -19,8 +18,8 @@ mod prover {
     // 5. Then trigger one execution
     //      cargo run --release --example risczero --features "prover"
 
-    pub(crate) fn run_proof() -> Result<(), anyhow::Error> {
-        let privk = fs::read_to_string("../rust-bitvmx-broker/certs/services.key")?;
+    pub(crate) fn run_proof(port: u16) -> Result<(), anyhow::Error> {
+        let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key")?;
         let my_id = 2;
         let dest_id = 1;
         let cert = Cert::new_with_privk(&privk)?;
@@ -33,7 +32,7 @@ mod prover {
 
         let channel = DualChannel::new(
             &BrokerConfig::new(
-                10000,
+                port,
                 Some(IpAddr::from([127, 0, 0, 1])),
                 cert.get_pubk_hash()?,
             ),
@@ -45,7 +44,7 @@ mod prover {
             job_id: "uid_job".to_string(),
             job_type: ProverJobType::Prove(
                 50_u32.to_be_bytes().to_vec(),
-                "../rust-bitvmx-zk-proof/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin".to_string(),
+                "./a.elf".to_string(),
                 ".".to_string(),
             ),
         })?;
@@ -59,7 +58,7 @@ mod prover {
                 println!("Result: {:?}", result);
                 break;
             } else {
-                println!("Waiting result execution");
+                //println!("Waiting result execution");
                 sleep(Duration::from_secs(1));
             }
         }
@@ -69,7 +68,7 @@ mod prover {
 }
 
 fn main() {
-    if let Err(e) = prover::run_proof() {
+    if let Err(e) = prover::run_proof(10000) {
         eprintln!("Error: {}", e);
     }
 }

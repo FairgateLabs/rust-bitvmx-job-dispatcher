@@ -28,7 +28,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     dispatcher_error::DispatcherError,
-    helper::{Msg, PingMessage, persist_job, process_msg},
+    helper::{persist_job, process_msg, Msg, PingMessage},
 };
 
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
@@ -80,16 +80,13 @@ where
                     PingMessage::Pong => {
                         warn!("Job Dispatcher should not receive Pong");
                         return Ok(false);
-                    },
+                    }
                 }
 
                 let pong = serde_json::to_string(&PingMessage::Pong)?;
 
-                self.channel.send(
-                    &msg.id,
-                    pong,
-                )?;
-            }else {
+                self.channel.send(&msg.id, pong)?;
+            } else {
                 let (child, context) = process_msg(&mut self.dispatcher, &msg.raw)?;
                 persist_job(&context, &msg, self.storage.clone())?;
                 self.workers.push((child, msg.id, context));

@@ -49,7 +49,7 @@ pub mod emulator {
             Some(my_id),
             allow_list,
         )?;
-        
+
         let msg = serde_json::to_string(&PingMessage::Ping)?;
         channel.send(&emulator_id.clone(), msg)?;
 
@@ -64,7 +64,7 @@ pub mod emulator {
                 return Err(anyhow::anyhow!("Unexpected Ping message received"));
             }
         }
-        
+
         Ok(())
     }
 
@@ -85,7 +85,8 @@ pub mod emulator {
         }
 
         Err(anyhow::anyhow!(
-            "Timeout: did not receive Pong Response in {} attempts", max_attempts
+            "Timeout: did not receive Pong Response in {} attempts",
+            max_attempts
         ))
     }
 }

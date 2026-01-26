@@ -1,17 +1,24 @@
 //TODO: Personalized Errors
-use std::{
-    fs, net::{IpAddr, Ipv4Addr}, sync::{
-        Arc, atomic::{AtomicBool, Ordering}
-    }
-};
 use anyhow::Result;
 use aws_service::dispatcher_loop;
-use bitvmx_broker::{channel::channel::DualChannel, identification::allow_list::AllowList, rpc::{BrokerConfig, tls_helper::Cert}};
+use bitvmx_broker::{
+    channel::channel::DualChannel,
+    identification::allow_list::AllowList,
+    rpc::{BrokerConfig, tls_helper::Cert},
+};
+use std::{
+    fs,
+    net::{IpAddr, Ipv4Addr},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
-use clap::{command, Parser};
+use clap::{Parser, command};
 use tracing::info;
 use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
 #[derive(Parser)]
@@ -22,7 +29,6 @@ struct Command {
     ip: String,
     #[arg(long)]
     port: u16,
-
 
     #[arg(long, default_value = "0")]
     my_id: u8,
@@ -56,13 +62,12 @@ fn init_trace() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-const PROVER_ID: u32 = 2000;
 fn main() -> Result<(), anyhow::Error> {
     init_trace()?;
     let args = Command::parse();
 
     info!("Starting...");
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = Arc::new(Mutex::new(tokio::runtime::Runtime::new()?));
 
     let ip = args
         .ip
@@ -81,7 +86,8 @@ fn main() -> Result<(), anyhow::Error> {
 
     let config: BrokerConfig =
         BrokerConfig::new(args.port, Some(IpAddr::from(ip)), args.broker_pubk_hash);
-    let channel = DualChannel::new(&config, cert, Some(my_id), allow_list)?;
+    let channel =
+        DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt.clone())?;
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));
@@ -92,7 +98,13 @@ fn main() -> Result<(), anyhow::Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    rt.block_on(dispatcher_loop(channel, check_interval, running, "./config.json".to_string()))?;
+    dispatcher_loop(
+        channel,
+        check_interval,
+        running,
+        rt,
+        "./config.json".to_string(),
+    )?;
 
     info!("Shutting down...");
 

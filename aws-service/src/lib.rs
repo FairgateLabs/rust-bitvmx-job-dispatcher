@@ -1,5 +1,5 @@
 mod dispatcher_error;
-mod dispatcher_job;
+pub mod dispatcher_job;
 mod dispatcher_module;
 
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
@@ -8,12 +8,13 @@ use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::I
 use std::{
     collections::HashMap,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
-use tracing::{debug, error, info};
+use tokio::runtime::Runtime;
+use tracing::{debug, error, info, warn};
 
 use crate::{
     dispatcher_job::ResultMessage,
@@ -42,10 +43,7 @@ impl DispatcherHandler {
         }
         let mut ready_instance_ids = HashMap::new();
         for instance_id in instance_ids {
-            ready_instance_ids.insert(
-                instance_id.clone(),
-                (true, None, None),
-            );
+            ready_instance_ids.insert(instance_id.clone(), (true, None, None));
         }
 
         Self {
@@ -56,12 +54,13 @@ impl DispatcherHandler {
         }
     }
 
-    pub async fn tick(&mut self) {
+    pub fn tick(&mut self, rt: Arc<Mutex<Runtime>>) {
         let msg = self.channel.recv();
         match msg {
             Ok(msg) => {
                 if let Some(msg) = msg {
                     if let Some(context) = process_msg(&mut self.dispatcher, &msg.0) {
+                        info!("Processed message: {:?}", msg);
                         self.pending_jobs.push((msg.1, context));
                     } else {
                         error!("Error processing message: {:?}", msg);
@@ -78,12 +77,17 @@ impl DispatcherHandler {
                 .filter_map(|(id, (ready, _, _))| if *ready { Some(id.clone()) } else { None })
                 .collect();
 
+            info!("Ready instance IDs: {:?}", ready_instances_ids);
+
             if !ready_instances_ids.is_empty() {
                 for ready_instance_id in ready_instances_ids {
                     if let Some((id, context)) = self.pending_jobs.pop() {
-                        self.dispatcher
-                            .manage_petition(&ready_instance_id, context.clone())
-                            .await
+                        rt.lock()
+                            .unwrap()
+                            .block_on(
+                                self.dispatcher
+                                    .manage_petition(&ready_instance_id, context.clone()),
+                            )
                             .expect("Failed to manage petition");
                         self.ready_instance_ids
                             .insert(ready_instance_id.clone(), (false, Some(context), Some(id)));
@@ -94,15 +98,18 @@ impl DispatcherHandler {
 
         for (instance_id, (ready, context, id)) in self.ready_instance_ids.iter_mut() {
             if !*ready {
-                if is_instance_ready(&instance_id).await.unwrap_or(false) {
+                if rt
+                    .lock()
+                    .unwrap()
+                    .block_on(is_instance_ready(&instance_id))
+                    .unwrap_or(false)
+                {
                     *ready = true;
                     let job_id = &context.as_ref().unwrap().job_id;
-                    if let Some(result) = self.dispatcher.process_result(&job_id)
-                    {
+                    if let Some(result) = self.dispatcher.process_result(&job_id) {
                         if let Err(e) = self.channel.send(
                             &id.clone().unwrap(),
-                            ResultMessage::new(job_id.clone(), result)
-                                .to_string(),
+                            ResultMessage::new(job_id.clone(), result).to_string(),
                         ) {
                             error!("Failed to send result: {}", e);
                         }
@@ -112,64 +119,24 @@ impl DispatcherHandler {
                 }
             }
         }
-        
-    }
-
-    pub async fn is_instance_stopped(
-        &self,
-        ec2: &Ec2Client,
-        instance_id: &str,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        debug!("Checking if instance {} is stopped...", instance_id);
-        let resp = ec2
-            .describe_instances()
-            .instance_ids(instance_id)
-            .send()
-            .await?;
-
-        let state = resp
-            .reservations()
-            .first()
-            .unwrap()
-            .instances()
-            .first()
-            .unwrap()
-            .state();
-
-        match state {
-            Some(s) => {
-                let name = s.name().unwrap().as_str();
-                if name == "stopped" {
-                    debug!("Instance is stopped, ready to run command");
-                    return Ok(true);
-                } else if name == "shutting-down" || name == "terminated" {
-                    debug!("Instance is shutting down or terminated, cannot run command");
-                    return Ok(false);
-                } else {
-                    debug!("Instance is not stopped yet, current state: {name}");
-                    return Ok(false);
-                }
-            }
-
-            None => {
-                error!("Instance state is unknown");
-                return Ok(false);
-            }
-        }
     }
 }
 
-pub async fn dispatcher_loop(
+pub fn dispatcher_loop(
     channel: DualChannel,
     check_interval: Duration,
     running: Arc<AtomicBool>,
+    rt: Arc<Mutex<Runtime>>,
     config_path: String,
 ) -> Result<(), anyhow::Error> {
-    let mut dispacher_handler = DispatcherHandler::new(channel, config_path).await;
-
+    let mut dispatcher_handler = rt
+        .lock()
+        .unwrap()
+        .block_on(DispatcherHandler::new(channel, config_path));
+    info!("Starting dispatcher loop");
     while running.load(Ordering::SeqCst) {
-        dispacher_handler.tick().await;
-        tokio::time::sleep(check_interval).await;
+        dispatcher_handler.tick(rt.clone());
+        std::thread::sleep(check_interval);
     }
 
     Ok(())
@@ -205,11 +172,9 @@ async fn create_service() -> Result<Ec2Client, EC2Error> {
     Ok(client)
 }
 
-async fn is_instance_ready(
-    instance_id: &str,
-) -> Result<bool, Box<dyn std::error::Error>> {
+async fn is_instance_ready(instance_id: &str) -> Result<bool, Box<dyn std::error::Error>> {
     let ec2 = create_service().await?;
-    println!("Checking if instance {} is stopped...", instance_id);
+    info!("Checking if instance {} is stopped...", instance_id);
     let resp = ec2
         .describe_instances()
         .instance_ids(instance_id)
@@ -229,19 +194,19 @@ async fn is_instance_ready(
         Some(s) => {
             let name = s.name().unwrap().as_str();
             if name == "stopped" {
-                println!("Instance is stopped, ready to run command");
+                info!("Instance is stopped, ready to run command");
                 return Ok(true);
             } else if name == "shutting-down" || name == "terminated" {
-                println!("Instance is shutting down or terminated, cannot run command");
+                info!("Instance is shutting down or terminated, cannot run command");
                 return Ok(false);
             } else {
-                println!("Instance is not stopped yet, current state: {name}");
+                info!("Instance is not stopped yet, current state: {name}");
                 return Ok(false);
             }
         }
 
         None => {
-            println!("Instance state is unknown");
+            warn!("Instance state is unknown");
             return Ok(false);
         }
     }

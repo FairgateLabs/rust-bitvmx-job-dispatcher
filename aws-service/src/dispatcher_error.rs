@@ -13,4 +13,16 @@ pub enum DispatcherError {
 
     #[error("IO error {0}")]
     IoError(#[from] std::io::Error),
+
+    #[error("EC2 error {0}")]
+    Ec2Error(#[from] aws_sdk_ec2::Error),
+
+    #[error("SSM error {0}")]
+    SsmError(#[from] aws_sdk_ssm::Error),
+
+    #[error("S3 error {0}")]
+    S3Error(#[from] aws_sdk_s3::Error),
+
+    #[error("Command execution failed")]
+    CommandExecutionFailed,
 }
