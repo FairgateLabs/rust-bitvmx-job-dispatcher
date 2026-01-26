@@ -21,16 +21,16 @@ pub struct JobContext {
     pub job_id: String,
     pub input_value: Vec<u8>,
     pub elf: String,
-    pub command_file: String,
+    pub command_file_path: String,
 }
 
 impl JobContext {
-    pub fn new(job_id: String, input_value: Vec<u8>, elf: String, command_file: String) -> Self {
+    pub fn new(job_id: String, input_value: Vec<u8>, elf: String, command_file_path: String) -> Self {
         Self {
             job_id,
             input_value,
             elf,
-            command_file,
+            command_file_path: command_file_path,
         }
     }
 }
@@ -54,13 +54,13 @@ impl Dispatcher {
         }
 
         let job_context = match msg.job_type {
-            ProverJobType::Prove(input_value, elf, command_file) => {
-                JobContext::new(msg.job_id.clone(), input_value, elf, command_file)
+            ProverJobType::Prove(input_value, elf, command_file_path) => {
+                JobContext::new(msg.job_id.clone(), input_value, elf, command_file_path)
             }
         };
 
         self.jobs
-            .insert(msg.job_id.clone(), job_context.command_file.clone());
+            .insert(msg.job_id.clone(), job_context.command_file_path.clone());
 
         Ok(job_context)
     }
@@ -70,7 +70,8 @@ impl Dispatcher {
     }
 
     pub fn process_result(&mut self, id: &str) -> Option<String> {
-        if let Some(command_file) = self.jobs.remove(id) {
+        if let Some(command_file_path) = self.jobs.remove(id) {
+            let command_file = format!("{}/output.json", command_file_path);
             match fs::read_to_string(&command_file) {
                 Ok(buf) => {
                     info!("Worker output from file: {}", buf);
@@ -105,6 +106,7 @@ impl Dispatcher {
         instance_id: &str,
         context: JobContext,
     ) -> Result<(), DispatcherError> {
+        //TODO: Add Deletion of already used files & name them with job_id
         let (ec2_client, config) = self.create_service().await;
 
         let ssm_client = SsmClient::new(&config);
@@ -116,7 +118,7 @@ impl Dispatcher {
             .expect("Could not start the instance");
         info!("Instance started");
 
-        self.upload_file(&s3_client, &context.input_value).await?;
+        self.upload_file(&s3_client, &context).await?;
 
         info!(
             "Checking if instance {} is able to run the command",
@@ -129,7 +131,7 @@ impl Dispatcher {
 
         info!("Sending command to instance {}", instance_id);
         let command_id = self
-            .send_command(&ssm_client, instance_id)
+            .send_command(&ssm_client, instance_id, &context)
             .await
             .expect("Could not send the command");
         info!("Command sent to instance {}", instance_id);
@@ -137,7 +139,7 @@ impl Dispatcher {
         self.wait_for_command_completion(&ssm_client, instance_id, &command_id)
             .await?;
 
-        self.download_file(&s3_client)
+        self.download_file(&s3_client, &context)
             .await
             .expect("Could not download the file");
 
@@ -154,16 +156,16 @@ impl Dispatcher {
     async fn upload_file(
         &self,
         client: &S3Client,
-        input_value: &Vec<u8>,
+        context: &JobContext,
     ) -> Result<(), DispatcherError> {
         let bucket = "prueba-zkp";
-        let key = "input.bin";
+        let key = format!("input_{}.bin", context.job_id);
 
         client
             .put_object()
             .bucket(bucket)
-            .key(key)
-            .body(input_value.clone().into())
+            .key(&key)
+            .body(context.input_value.clone().into())
             .send()
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
@@ -178,6 +180,7 @@ impl Dispatcher {
         ssm_client: &SsmClient,
         instance_id: &str,
     ) -> Result<(), DispatcherError> {
+        //TODO: Handle Errors correctly
         loop {
             let resp = client
                 .describe_instances()
@@ -298,20 +301,28 @@ impl Dispatcher {
         &self,
         client: &SsmClient,
         instance_id: &str,
+        context: &JobContext
     ) -> Result<String, DispatcherError> {
-        // aws s3 cp s3://prueba-zkp/input.bin" /tmp/input.bin &&
-        // ./rust-bitvmx-zk-proof/target/release/host prove-stark \
-        //                 --input /tmp/input.bin \
-        //                 --elf ./rust-bitvmx-zk-proof/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin \
-        //                 --output /tmp/stark_proof.bin \
-        //                 --json /tmp/output.json \
-        //                 && ../rust-bitvmx-zk-proof/target/release/host \
-        //                 prove-snark \
-        //                 --input /tmp/stark_proof.bin \
-        //                 --json /tmp/output.json \
-        //                 --json-input /tmp/output.json
-        // && aws s3 cp /tmp/output.json s3://prueba-zkp/output.json > /tmp/upload.log 2>&1
-        let command_to_send = "echo 'Hello from Rust SDK' > /tmp/output.json && aws s3 cp /tmp/output.json s3://prueba-zkp/output.json > /tmp/upload.log 2>&1";
+        let elf = "/home/ec2-user/rust-bitvmx-zk-proof/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin";
+        let host_bin = "/home/ec2-user/rust-bitvmx-zk-proof/target/release/host";
+        let output_file = format!("s3://prueba-zkp/output_{}.json", context.job_id);
+        let input_file = format!("s3://prueba-zkp/input_{}.bin", context.job_id);
+
+        let command_to_send = format!(
+            "aws s3 cp {input_file} /tmp/input.bin && \
+            {host_bin} prove-stark \
+            --input /tmp/input.bin \
+            --elf {elf} \
+            --output /tmp/stark_proof.bin \
+            --json /tmp/output.json \
+            && {host_bin} \
+            prove-snark \
+            --input /tmp/stark_proof.bin \
+            --json /tmp/output.json \
+            --json-input /tmp/output.json \
+            && aws s3 cp /tmp/output.json {output_file} > /tmp/upload.log 2>&1"
+        );
+
         let command = client
             .send_command()
             .instance_ids(instance_id)
@@ -380,7 +391,7 @@ impl Dispatcher {
 
         Ok(())
     }
-    async fn download_file(&self, client: &S3Client) -> Result<(), DispatcherError> {
+    async fn download_file(&self, client: &S3Client, context: &JobContext) -> Result<(), DispatcherError> {
         let bucket = "prueba-zkp";
         let key = "output.json";
         let resp = client
@@ -391,7 +402,7 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        let mut file = File::create("output.json")
+        let mut file = File::create(format!("{}/output.json", context.command_file_path))
             .await
             .expect("Could not create the file");
         let mut body = resp.body.into_async_read();

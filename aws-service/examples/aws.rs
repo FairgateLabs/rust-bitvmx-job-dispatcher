@@ -1,5 +1,5 @@
 pub mod prover {
-    use aws_service::dispatcher_job::{DispatcherJob, ProverJobType};
+    use aws_service::dispatcher_job::{DispatcherJob, ProverJobType, ResultMessage};
     use bitvmx_broker::identification::allow_list::AllowList;
     use bitvmx_broker::identification::identifier::Identifier;
     use bitvmx_broker::rpc::BrokerConfig;
@@ -53,8 +53,9 @@ pub mod prover {
         for _ in 0..1000 {
             if let Some((msg, _from)) = channel.recv()? {
                 println!("Received: {}", msg);
+                let result_msg = ResultMessage::from_str(&msg)?;
                 let result =
-                    ProverResultType::from_json_string(msg).map_err(|e| anyhow::anyhow!(e))?;
+                    ProverResultType::from_json_string(result_msg.result).map_err(|e| anyhow::anyhow!(e))?;
                 println!("Result: {:?}", result);
                 break;
             } else {
