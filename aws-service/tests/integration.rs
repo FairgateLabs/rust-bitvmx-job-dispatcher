@@ -36,6 +36,7 @@ fn test_aws_dispatcher() -> Result<(), anyhow::Error> {
     let dispatcher_handler = start_dispatcher(running_dispatcher.clone())?;
     let zkp_handler = start_zkp(PORT);
     std::thread::sleep(std::time::Duration::from_secs(9));
+
     zkp_handler.join().unwrap()?;
     info!("ZKP finished, shutting everything down...");
     server_handler.close();

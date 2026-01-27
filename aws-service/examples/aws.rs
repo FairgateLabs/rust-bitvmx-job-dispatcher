@@ -53,12 +53,11 @@ pub mod prover {
             if let Some((msg, _from)) = channel.recv()? {
                 println!("Received: {}", msg);
                 let result_msg = ResultMessage::from_str(&msg)?;
-                let result =
-                    ProverResultType::from_json_string(result_msg.result).map_err(|e| anyhow::anyhow!(e))?;
+                let result = ProverResultType::from_json_string(result_msg.result)
+                    .map_err(|e| anyhow::anyhow!(e))?;
                 println!("Result: {:?}", result);
                 break;
             } else {
-                //println!("Waiting result execution");
                 sleep(Duration::from_secs(1));
             }
         }

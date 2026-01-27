@@ -5,7 +5,6 @@ mod dispatcher_module;
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
 use aws_sdk_ec2::{Client as Ec2Client, types::InstanceStateName};
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
-use utils::{Msg, PingMessage};
 use std::{
     collections::HashMap,
     sync::{
@@ -16,9 +15,12 @@ use std::{
 };
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info, warn};
+use utils::{Msg, PingMessage};
 
 use crate::{
-    dispatcher_error::DispatcherError, dispatcher_job::ResultMessage, dispatcher_module::{Dispatcher, JobContext}
+    dispatcher_error::DispatcherError,
+    dispatcher_job::ResultMessage,
+    dispatcher_module::{Dispatcher, JobContext},
 };
 
 pub fn process_msg(dispatcher: &mut Dispatcher, msg: &str) -> Option<JobContext> {
@@ -104,9 +106,9 @@ impl DispatcherHandler {
         }
 
         let ec2 = rt
-                    .lock()
-                    .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
-                    .block_on(create_service());
+            .lock()
+            .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
+            .block_on(create_service());
 
         for (instance_id, (ready, context, id)) in self.ready_instance_ids.iter_mut() {
             if !*ready {
@@ -211,31 +213,27 @@ async fn is_instance_ready(instance_id: &str, ec2: &Ec2Client) -> Result<bool, D
         .state();
 
     match state {
-        Some(s) => {
-            match s.name(){
-                Some(name) => {
-                    match name {
-                        InstanceStateName::Stopped => {
-                            debug!("Instance {} is stopped", instance_id);
-                            Ok(true)
-                        },
-                        InstanceStateName::Running => {
-                            debug!("Instance {} is running", instance_id);
-                            Ok(false)
-                        },
-                        _ => {
-                            debug!("Instance {} is in state {:?}", instance_id, name);
-                            Ok(false)
-                        }
-                    }
-                },
-                None => {
-                    warn!("Instance state name is unknown");
+        Some(s) => match s.name() {
+            Some(name) => match name {
+                InstanceStateName::Stopped => {
+                    debug!("Instance {} is stopped", instance_id);
+                    Ok(true)
+                }
+                InstanceStateName::Running => {
+                    debug!("Instance {} is running", instance_id);
                     Ok(false)
                 }
+                _ => {
+                    debug!("Instance {} is in state {:?}", instance_id, name);
+                    Ok(false)
+                }
+            },
+            None => {
+                warn!("Instance state name is unknown");
+                Ok(false)
             }
-            
-        } None => {
+        },
+        None => {
             warn!("Instance state is unknown");
             return Ok(false);
         }

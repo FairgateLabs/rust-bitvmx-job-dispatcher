@@ -11,7 +11,9 @@ use aws_sdk_ssm::{
 };
 use std::{collections::HashMap, fs, time::Duration};
 use tokio::{
-    fs::File, io::copy, time::{Instant, sleep}
+    fs::File,
+    io::copy,
+    time::{Instant, sleep},
 };
 use tracing::{debug, error, info};
 
@@ -24,7 +26,12 @@ pub struct JobContext {
 }
 
 impl JobContext {
-    pub fn new(job_id: String, input_value: Vec<u8>, elf: String, command_file_path: String) -> Self {
+    pub fn new(
+        job_id: String,
+        input_value: Vec<u8>,
+        elf: String,
+        command_file_path: String,
+    ) -> Self {
         Self {
             job_id,
             input_value,
@@ -112,8 +119,7 @@ impl Dispatcher {
         let s3_client = S3Client::new(&config);
 
         debug!("Starting instance {}", instance_id);
-        self.start_instance(&ec2_client, instance_id)
-            .await?;
+        self.start_instance(&ec2_client, instance_id).await?;
         debug!("Instance started");
 
         self.upload_file(&s3_client, &context).await?;
@@ -135,14 +141,12 @@ impl Dispatcher {
         self.wait_for_command_completion(&ssm_client, instance_id, &command_id)
             .await?;
 
-        self.download_file(&s3_client, &context)
-            .await?;
+        self.download_file(&s3_client, &context).await?;
 
         debug!("File downloaded");
 
         debug!("Stopping instance {}", instance_id);
-        self.stop_instance(&ec2_client, instance_id)
-            .await?;
+        self.stop_instance(&ec2_client, instance_id).await?;
         debug!("Instance stopped");
         Ok(())
     }
@@ -217,21 +221,23 @@ impl Dispatcher {
             if let Some(status) = resp.instance_statuses().first() {
                 let sys_ok = match status.system_status().and_then(|s| s.status()) {
                     Some(&SummaryStatus::Ok) => true,
-                    Some(&SummaryStatus::Impaired) | Some(&SummaryStatus::InsufficientData)
+                    Some(&SummaryStatus::Impaired)
+                    | Some(&SummaryStatus::InsufficientData)
                     | Some(&SummaryStatus::NotApplicable) => {
                         error!("Invalid System Status for instance {}", instance_id);
                         return Err(DispatcherError::InvalidStatus("System".into()));
-                    },
+                    }
                     _ => false,
                 };
 
                 let inst_ok = match status.instance_status().and_then(|s| s.status()) {
                     Some(&SummaryStatus::Ok) => true,
-                    Some(&SummaryStatus::Impaired) | Some(&SummaryStatus::InsufficientData)
+                    Some(&SummaryStatus::Impaired)
+                    | Some(&SummaryStatus::InsufficientData)
                     | Some(&SummaryStatus::NotApplicable) => {
                         error!("Invalid Instance Status for instance {}", instance_id);
                         return Err(DispatcherError::InvalidStatus("Instance".into()));
-                    },
+                    }
                     _ => false,
                 };
 
@@ -258,19 +264,18 @@ impl Dispatcher {
                         Some(&PingStatus::Online) => {
                             debug!("SSM status is online");
                             return Ok(());
-                        },
+                        }
                         Some(&PingStatus::ConnectionLost) => {
                             error!("Connection lost for instance {}", instance_id);
                             return Err(DispatcherError::InvalidStatus("SSM".into()));
                         }
-                        _ => {},
+                        _ => {}
                     }
                 }
-            };
+            }
 
             sleep(Duration::from_secs(1)).await;
         }
-
     }
 
     async fn create_service(&self) -> (Ec2Client, SdkConfig) {
@@ -319,7 +324,7 @@ impl Dispatcher {
         &self,
         client: &SsmClient,
         instance_id: &str,
-        context: &JobContext
+        context: &JobContext,
     ) -> Result<String, DispatcherError> {
         let elf = "/home/ec2-user/rust-bitvmx-zk-proof/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin";
         let host_bin = "/home/ec2-user/rust-bitvmx-zk-proof/target/release/host";
@@ -409,7 +414,11 @@ impl Dispatcher {
 
         Ok(())
     }
-    async fn download_file(&self, client: &S3Client, context: &JobContext) -> Result<(), DispatcherError> {
+    async fn download_file(
+        &self,
+        client: &S3Client,
+        context: &JobContext,
+    ) -> Result<(), DispatcherError> {
         let bucket = "prueba-zkp";
         let key = "output.json";
         let resp = client
@@ -420,11 +429,9 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        let mut file = File::create(format!("{}/output.json", context.command_file_path))
-            .await?;
+        let mut file = File::create(format!("{}/output.json", context.command_file_path)).await?;
         let mut body = resp.body.into_async_read();
-        copy(&mut body, &mut file)
-            .await?;
+        copy(&mut body, &mut file).await?;
 
         Ok(())
     }

@@ -21,10 +21,10 @@ pub mod emulator {
     use bitvmx_broker::rpc::tls_helper::Cert;
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_broker::{channel::channel::DualChannel, identification::allow_list::AllowList};
-    use utils::PingMessage;
     use std::net::Ipv4Addr;
     use std::{fs, net::IpAddr, thread::sleep, time::Duration};
     use tracing::info;
+    use utils::PingMessage;
 
     pub(crate) fn run_job(paths: Paths, port: u16) -> Result<(), anyhow::Error> {
         info!("Starting challenge example...");

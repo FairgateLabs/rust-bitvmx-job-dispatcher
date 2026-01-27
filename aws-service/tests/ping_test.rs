@@ -2,8 +2,8 @@ use std::{
     fs,
     net::{IpAddr, Ipv4Addr},
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     thread,
     time::Duration,
@@ -13,14 +13,14 @@ use anyhow::Result;
 use bitvmx_broker::{
     channel::channel::DualChannel,
     identification::{allow_list::AllowList, routing::RoutingTable},
-    rpc::{sync_server::BrokerSync, tls_helper::Cert, BrokerConfig},
+    rpc::{BrokerConfig, sync_server::BrokerSync, tls_helper::Cert},
 };
 
 use bitvmx_aws_job_dispatcher::dispatcher_loop;
 use tokio::runtime::Runtime;
 use tracing::{debug, info};
 use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
 #[path = "../examples/ping.rs"]

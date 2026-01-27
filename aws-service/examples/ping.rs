@@ -1,6 +1,6 @@
 use tracing::error;
 use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
 // To make this example work, you need to:
@@ -13,13 +13,13 @@ use tracing_subscriber::{
 
 pub mod prover {
     use bitvmx_broker::identification::identifier::Identifier;
-    use bitvmx_broker::rpc::tls_helper::Cert;
     use bitvmx_broker::rpc::BrokerConfig;
+    use bitvmx_broker::rpc::tls_helper::Cert;
     use bitvmx_broker::{channel::channel::DualChannel, identification::allow_list::AllowList};
-    use utils::PingMessage;
     use std::net::Ipv4Addr;
     use std::{fs, net::IpAddr, thread::sleep, time::Duration};
     use tracing::info;
+    use utils::PingMessage;
 
     pub(crate) fn run_job(port: u16) -> Result<(), anyhow::Error> {
         info!("Starting ping example...");
