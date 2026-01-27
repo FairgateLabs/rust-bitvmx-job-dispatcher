@@ -1,5 +1,5 @@
 use anyhow::Result;
-use aws_service::dispatcher_loop;
+use bitvmx_aws_job_dispatcher::dispatcher_loop;
 use bitvmx_broker::{
     channel::channel::DualChannel,
     identification::allow_list::AllowList,

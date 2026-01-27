@@ -25,10 +25,11 @@ use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
 use tracing::{debug, info, warn};
+use utils::{Msg, PingMessage};
 
 use crate::{
     dispatcher_error::DispatcherError,
-    helper::{persist_job, process_msg, Msg, PingMessage},
+    helper::{persist_job, process_msg},
 };
 
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {

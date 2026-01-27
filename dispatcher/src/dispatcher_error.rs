@@ -30,6 +30,9 @@ pub enum DispatcherError {
     #[error("Parse error")]
     ParseError,
 
-    #[error("Broker error")]
+    #[error("Broker error {0}")]
     BrokerError(#[from] bitvmx_broker::rpc::errors::BrokerError),
+
+    #[error("Utils error {0}")]
+    UtilsError(#[from] utils::error::UtilsError),
 }

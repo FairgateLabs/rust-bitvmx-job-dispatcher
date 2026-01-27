@@ -2,8 +2,8 @@ use std::{
     fs,
     net::{IpAddr, Ipv4Addr},
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     },
     thread,
     time::Duration,
@@ -13,31 +13,32 @@ use anyhow::Result;
 use bitvmx_broker::{
     channel::channel::DualChannel,
     identification::{allow_list::AllowList, routing::RoutingTable},
-    rpc::{BrokerConfig, sync_server::BrokerSync, tls_helper::Cert},
+    rpc::{sync_server::BrokerSync, tls_helper::Cert, BrokerConfig},
 };
 
 use bitvmx_aws_job_dispatcher::dispatcher_loop;
 use tokio::runtime::Runtime;
 use tracing::{debug, info};
 use tracing_subscriber::{
-    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
+    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
-#[path = "../examples/aws.rs"]
-mod aws;
+#[path = "../examples/ping.rs"]
+mod ping;
 
 const PORT: u16 = 10300;
 
 #[test]
-fn test_aws_dispatcher() -> Result<(), anyhow::Error> {
+fn test_dispatcher_ping() -> Result<(), anyhow::Error> {
     init_trace()?;
     let mut server_handler = init_server(PORT)?;
     let running_dispatcher = Arc::new(AtomicBool::new(true));
     let dispatcher_handler = start_dispatcher(running_dispatcher.clone())?;
-    let zkp_handler = start_zkp(PORT);
+    let ping_handler = start_ping(PORT);
     std::thread::sleep(std::time::Duration::from_secs(9));
-    zkp_handler.join().unwrap()?;
-    info!("ZKP finished, shutting everything down...");
+
+    ping_handler.join().unwrap()?;
+    info!("Ping finished, shutting everything down...");
     server_handler.close();
     running_dispatcher.store(false, Ordering::SeqCst);
     if let Err(msg) = dispatcher_handler.join().unwrap() {
@@ -98,8 +99,8 @@ fn start_dispatcher(
     Ok(handle)
 }
 
-fn start_zkp(port: u16) -> thread::JoinHandle<Result<(), anyhow::Error>> {
-    let handle = thread::spawn(move || aws::prover::run_proof(port));
+fn start_ping(port: u16) -> thread::JoinHandle<Result<(), anyhow::Error>> {
+    let handle = thread::spawn(move || ping::prover::run_job(port));
     handle
 }
 

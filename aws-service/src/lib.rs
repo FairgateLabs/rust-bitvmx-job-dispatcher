@@ -5,6 +5,7 @@ mod dispatcher_module;
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
 use aws_sdk_ec2::{Client as Ec2Client, types::InstanceStateName};
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
+use utils::{Msg, PingMessage};
 use std::{
     collections::HashMap,
     sync::{
@@ -54,19 +55,27 @@ impl DispatcherHandler {
     }
 
     pub fn tick(&mut self, rt: Arc<Mutex<Runtime>>) -> Result<(), DispatcherError> {
-        let msg = self.channel.recv();
-        match msg {
-            Ok(msg) => {
-                if let Some(msg) = msg {
-                    if let Some(context) = process_msg(&mut self.dispatcher, &msg.0) {
-                        info!("Processed message: {:?}", msg);
-                        self.pending_jobs.push((msg.1, context));
-                    } else {
-                        error!("Error processing message: {:?}", msg);
+        let msg = self.channel.recv()?;
+        if let Some(msg) = msg {
+            let msg = Msg::from_msg(msg.clone());
+            if let Some(message) = serde_json::from_str::<PingMessage>(&msg.raw).ok() {
+                match message {
+                    PingMessage::Ping => debug!("Received Ping"),
+                    PingMessage::Pong => {
+                        warn!("Job Dispatcher should not receive Pong");
+                        return Ok(());
                     }
                 }
+
+                let pong = serde_json::to_string(&PingMessage::Pong)?;
+
+                self.channel.send(&msg.id, pong)?;
+            } else if let Some(context) = process_msg(&mut self.dispatcher, &msg.raw) {
+                info!("Dispatching job ID: {}", context.job_id);
+                self.pending_jobs.push((msg.id, context));
+            } else {
+                error!("Error processing message: {}", msg);
             }
-            Err(e) => error!("Error: {:?}", e),
         }
 
         if !self.pending_jobs.is_empty() {
@@ -82,7 +91,7 @@ impl DispatcherHandler {
                 for ready_instance_id in ready_instances_ids {
                     if let Some((id, context)) = self.pending_jobs.pop() {
                         rt.lock()
-                            .unwrap()
+                            .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
                             .block_on(
                                 self.dispatcher
                                     .manage_petition(&ready_instance_id, context.clone()),
@@ -96,14 +105,14 @@ impl DispatcherHandler {
 
         let ec2 = rt
                     .lock()
-                    .unwrap()
+                    .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
                     .block_on(create_service());
 
         for (instance_id, (ready, context, id)) in self.ready_instance_ids.iter_mut() {
             if !*ready {
                 if rt
                     .lock()
-                    .unwrap()
+                    .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
                     .block_on(is_instance_ready(&instance_id, &ec2))
                     .unwrap_or(false)
                 {
@@ -136,7 +145,7 @@ pub fn dispatcher_loop(
 ) -> Result<(), DispatcherError> {
     let mut dispatcher_handler = rt
         .lock()
-        .unwrap()
+        .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
         .block_on(DispatcherHandler::new(channel, config_path));
     info!("Starting dispatcher loop");
     while running.load(Ordering::SeqCst) {
@@ -207,15 +216,15 @@ async fn is_instance_ready(instance_id: &str, ec2: &Ec2Client) -> Result<bool, D
                 Some(name) => {
                     match name {
                         InstanceStateName::Stopped => {
-                            info!("Instance {} is stopped", instance_id);
+                            debug!("Instance {} is stopped", instance_id);
                             Ok(true)
                         },
                         InstanceStateName::Running => {
-                            info!("Instance {} is running", instance_id);
+                            debug!("Instance {} is running", instance_id);
                             Ok(false)
                         },
                         _ => {
-                            warn!("Instance {} is in state {:?}", instance_id, name);
+                            debug!("Instance {} is in state {:?}", instance_id, name);
                             Ok(false)
                         }
                     }

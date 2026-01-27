@@ -3,10 +3,6 @@ use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
 
-pub(crate) use challenge::Paths;
-#[path = "./challenge.rs"]
-mod challenge;
-
 // To make this example work, you need to:
 // 1. run the server example first (from bitvmx-broker).
 //      cargo run --release --example server -- --port 10000
@@ -15,8 +11,7 @@ mod challenge;
 // 3. Then trigger one execution
 //      cargo run --release --example challenge --features "emulator"
 
-pub mod emulator {
-    use super::Paths;
+pub mod prover {
     use bitvmx_broker::identification::identifier::Identifier;
     use bitvmx_broker::rpc::tls_helper::Cert;
     use bitvmx_broker::rpc::BrokerConfig;
@@ -26,9 +21,9 @@ pub mod emulator {
     use std::{fs, net::IpAddr, thread::sleep, time::Duration};
     use tracing::info;
 
-    pub(crate) fn run_job(paths: Paths, port: u16) -> Result<(), anyhow::Error> {
-        info!("Starting challenge example...");
-        let privk = fs::read_to_string(paths.privk)?;
+    pub(crate) fn run_job(port: u16) -> Result<(), anyhow::Error> {
+        info!("Starting ping example...");
+        let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key")?;
         let my_id = 2;
         let dest_id = 1;
         let cert = Cert::new_with_privk(&privk)?;
@@ -94,8 +89,7 @@ pub mod emulator {
 #[allow(dead_code)]
 fn main() {
     init_trace().unwrap();
-    let paths = Paths::new("");
-    if let Err(e) = emulator::run_job(paths, 10000) {
+    if let Err(e) = prover::run_job(10000) {
         error!("Error: {}", e);
     }
 }

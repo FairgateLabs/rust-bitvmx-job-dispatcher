@@ -31,4 +31,13 @@ pub enum DispatcherError {
 
     #[error("Invalid {0} Status")]
     InvalidStatus(String),
+
+    #[error("Utils error {0}")]
+    UtilsError(#[from] utils::error::UtilsError),
+
+    #[error("Broker error {0}")]
+    BrokerError(#[from] bitvmx_broker::rpc::errors::BrokerError),
+
+    #[error("Mutex Poisoned: {0}")]
+    MutexPoisoned(String),
 }

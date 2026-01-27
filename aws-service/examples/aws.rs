@@ -1,5 +1,5 @@
 pub mod prover {
-    use aws_service::dispatcher_job::{DispatcherJob, ProverJobType, ResultMessage};
+    use bitvmx_aws_job_dispatcher::dispatcher_job::{DispatcherJob, ProverJobType, ResultMessage};
     use bitvmx_broker::identification::allow_list::AllowList;
     use bitvmx_broker::identification::identifier::Identifier;
     use bitvmx_broker::rpc::BrokerConfig;
