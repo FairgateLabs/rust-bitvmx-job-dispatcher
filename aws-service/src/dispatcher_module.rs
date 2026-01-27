@@ -11,8 +11,7 @@ use aws_sdk_ssm::{
 };
 use std::{collections::HashMap, fs, time::Duration};
 use tokio::{
-    fs::File,
-    time::{Instant, sleep},
+    fs::File, io::copy, time::{Instant, sleep}
 };
 use tracing::{debug, error, info};
 
@@ -74,7 +73,7 @@ impl Dispatcher {
             let command_file = format!("{}/output.json", command_file_path);
             match fs::read_to_string(&command_file) {
                 Ok(buf) => {
-                    info!("Worker output from file: {}", buf);
+                    debug!("Worker output from file: {}", buf);
                     match Self::extract_structured_json("ProveResult", &buf) {
                         Some(result) => return Some(result),
                         None => {
@@ -112,44 +111,39 @@ impl Dispatcher {
         let ssm_client = SsmClient::new(&config);
         let s3_client = S3Client::new(&config);
 
-        info!("Starting instance {}", instance_id);
+        debug!("Starting instance {}", instance_id);
         self.start_instance(&ec2_client, instance_id)
-            .await
-            .expect("Could not start the instance");
-        info!("Instance started");
+            .await?;
+        debug!("Instance started");
 
         self.upload_file(&s3_client, &context).await?;
 
-        info!(
+        debug!(
             "Checking if instance {} is able to run the command",
             instance_id
         );
         self.check_instance_status(&ec2_client, &ssm_client, instance_id)
-            .await
-            .expect("Could not check the instance status");
-        info!("Instance {} is able to run the command", instance_id);
+            .await?;
+        debug!("Instance {} is able to run the command", instance_id);
 
-        info!("Sending command to instance {}", instance_id);
+        debug!("Sending command to instance {}", instance_id);
         let command_id = self
             .send_command(&ssm_client, instance_id, &context)
-            .await
-            .expect("Could not send the command");
-        info!("Command sent to instance {}", instance_id);
+            .await?;
+        debug!("Command sent to instance {}", instance_id);
 
         self.wait_for_command_completion(&ssm_client, instance_id, &command_id)
             .await?;
 
         self.download_file(&s3_client, &context)
-            .await
-            .expect("Could not download the file");
+            .await?;
 
-        info!("File downloaded");
+        debug!("File downloaded");
 
-        info!("Stopping instance {}", instance_id);
+        debug!("Stopping instance {}", instance_id);
         self.stop_instance(&ec2_client, instance_id)
-            .await
-            .expect("Could not stop the instance");
-        info!("Instance stopped");
+            .await?;
+        debug!("Instance stopped");
         Ok(())
     }
 
@@ -180,7 +174,6 @@ impl Dispatcher {
         ssm_client: &SsmClient,
         instance_id: &str,
     ) -> Result<(), DispatcherError> {
-        //TODO: Handle Errors correctly
         loop {
             let resp = client
                 .describe_instances()
@@ -198,14 +191,19 @@ impl Dispatcher {
                 .map(|s| s.as_str())
                 .unwrap_or("unknown");
 
-            if state == "running" {
-                break;
+            match state {
+                "running" => break,
+                "shutting-down" | "stopped" | "stopping" | "terminated" => {
+                    error!("Instance {} is in state {}", instance_id, state);
+                    return Err(DispatcherError::InstanceNotRunning);
+                }
+                _ => debug!("Instance state is {}, waiting for 'running'...", state),
             }
 
             sleep(Duration::from_secs(1)).await;
         }
 
-        info!("Instance is running, checking system and instance status...");
+        debug!("Instance is running, checking system and instance status...");
 
         loop {
             let resp = client
@@ -217,10 +215,25 @@ impl Dispatcher {
                 .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
 
             if let Some(status) = resp.instance_statuses().first() {
-                let sys_ok =
-                    status.system_status().and_then(|s| s.status()) == Some(&SummaryStatus::Ok);
-                let inst_ok =
-                    status.instance_status().and_then(|s| s.status()) == Some(&SummaryStatus::Ok);
+                let sys_ok = match status.system_status().and_then(|s| s.status()) {
+                    Some(&SummaryStatus::Ok) => true,
+                    Some(&SummaryStatus::Impaired) | Some(&SummaryStatus::InsufficientData)
+                    | Some(&SummaryStatus::NotApplicable) => {
+                        error!("Invalid System Status for instance {}", instance_id);
+                        return Err(DispatcherError::InvalidStatus("System".into()));
+                    },
+                    _ => false,
+                };
+
+                let inst_ok = match status.instance_status().and_then(|s| s.status()) {
+                    Some(&SummaryStatus::Ok) => true,
+                    Some(&SummaryStatus::Impaired) | Some(&SummaryStatus::InsufficientData)
+                    | Some(&SummaryStatus::NotApplicable) => {
+                        error!("Invalid Instance Status for instance {}", instance_id);
+                        return Err(DispatcherError::InvalidStatus("Instance".into()));
+                    },
+                    _ => false,
+                };
 
                 if sys_ok && inst_ok {
                     break;
@@ -230,7 +243,7 @@ impl Dispatcher {
             sleep(Duration::from_secs(1)).await;
         }
 
-        info!("Instance Status is ok, checking SSM status...");
+        debug!("Instance Status is ok, checking SSM status...");
 
         loop {
             let resp = ssm_client
@@ -239,20 +252,25 @@ impl Dispatcher {
                 .await
                 .map_err(|e| DispatcherError::SsmError(e.into()))?;
 
-            let online = resp.instance_information_list().iter().any(|i| {
-                i.instance_id() == Some(instance_id) && i.ping_status() == Some(&PingStatus::Online)
-            });
-
-            if online {
-                break;
-            }
+            for instance_info in resp.instance_information_list().iter() {
+                if instance_info.instance_id() == Some(instance_id) {
+                    match instance_info.ping_status() {
+                        Some(&PingStatus::Online) => {
+                            debug!("SSM status is online");
+                            return Ok(());
+                        },
+                        Some(&PingStatus::ConnectionLost) => {
+                            error!("Connection lost for instance {}", instance_id);
+                            return Err(DispatcherError::InvalidStatus("SSM".into()));
+                        }
+                        _ => {},
+                    }
+                }
+            };
 
             sleep(Duration::from_secs(1)).await;
         }
 
-        info!("SSM status is online");
-
-        Ok(())
     }
 
     async fn create_service(&self) -> (Ec2Client, SdkConfig) {
@@ -386,7 +404,7 @@ impl Dispatcher {
                 }
             }
 
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            sleep(Duration::from_secs(5)).await;
         }
 
         Ok(())
@@ -403,12 +421,10 @@ impl Dispatcher {
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
         let mut file = File::create(format!("{}/output.json", context.command_file_path))
-            .await
-            .expect("Could not create the file");
+            .await?;
         let mut body = resp.body.into_async_read();
-        tokio::io::copy(&mut body, &mut file)
-            .await
-            .expect("Could not copy the data to the file");
+        copy(&mut body, &mut file)
+            .await?;
 
         Ok(())
     }

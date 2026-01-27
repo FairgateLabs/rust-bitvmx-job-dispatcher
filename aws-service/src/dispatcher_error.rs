@@ -25,4 +25,10 @@ pub enum DispatcherError {
 
     #[error("Command execution failed")]
     CommandExecutionFailed,
+
+    #[error("Instance not running")]
+    InstanceNotRunning,
+
+    #[error("Invalid {0} Status")]
+    InvalidStatus(String),
 }

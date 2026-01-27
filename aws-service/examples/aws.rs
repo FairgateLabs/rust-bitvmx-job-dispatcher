@@ -9,13 +9,12 @@ pub mod prover {
     use zk_result::ResultType as ProverResultType;
 
     // To make this example work, you need to:
-    // 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
-    //    until the step "Template Setup"
-    // 3. run the server example first.
+    // 1. Follow AWS Instance Setup in README.md
+    // 2. Run the server example first.
     //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1 --dest-id 2
-    // 4. Then run the job-dispatcher
+    // 3. Then run the job-dispatcher
     //      cargo run --release --features "prover"
-    // 5. Then trigger one execution
+    // 4. Then trigger one execution
     //      cargo run --release --example risczero --features "prover"
 
     pub(crate) fn run_proof(port: u16) -> Result<(), anyhow::Error> {

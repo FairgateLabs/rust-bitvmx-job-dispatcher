@@ -3,7 +3,7 @@ pub mod dispatcher_job;
 mod dispatcher_module;
 
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
-use aws_sdk_ec2::{Client as Ec2Client, Error as EC2Error};
+use aws_sdk_ec2::{Client as Ec2Client, types::InstanceStateName};
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
 use std::{
     collections::HashMap,
@@ -17,8 +17,7 @@ use tokio::runtime::Runtime;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    dispatcher_job::ResultMessage,
-    dispatcher_module::{Dispatcher, JobContext},
+    dispatcher_error::DispatcherError, dispatcher_job::ResultMessage, dispatcher_module::{Dispatcher, JobContext}
 };
 
 pub fn process_msg(dispatcher: &mut Dispatcher, msg: &str) -> Option<JobContext> {
@@ -54,7 +53,7 @@ impl DispatcherHandler {
         }
     }
 
-    pub fn tick(&mut self, rt: Arc<Mutex<Runtime>>) {
+    pub fn tick(&mut self, rt: Arc<Mutex<Runtime>>) -> Result<(), DispatcherError> {
         let msg = self.channel.recv();
         match msg {
             Ok(msg) => {
@@ -87,8 +86,7 @@ impl DispatcherHandler {
                             .block_on(
                                 self.dispatcher
                                     .manage_petition(&ready_instance_id, context.clone()),
-                            )
-                            .expect("Failed to manage petition");
+                            )?;
                         self.ready_instance_ids
                             .insert(ready_instance_id.clone(), (false, Some(context), Some(id)));
                     }
@@ -96,12 +94,17 @@ impl DispatcherHandler {
             }
         }
 
+        let ec2 = rt
+                    .lock()
+                    .unwrap()
+                    .block_on(create_service());
+
         for (instance_id, (ready, context, id)) in self.ready_instance_ids.iter_mut() {
             if !*ready {
                 if rt
                     .lock()
                     .unwrap()
-                    .block_on(is_instance_ready(&instance_id))
+                    .block_on(is_instance_ready(&instance_id, &ec2))
                     .unwrap_or(false)
                 {
                     *ready = true;
@@ -119,6 +122,8 @@ impl DispatcherHandler {
                 }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -128,14 +133,17 @@ pub fn dispatcher_loop(
     running: Arc<AtomicBool>,
     rt: Arc<Mutex<Runtime>>,
     config_path: String,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), DispatcherError> {
     let mut dispatcher_handler = rt
         .lock()
         .unwrap()
         .block_on(DispatcherHandler::new(channel, config_path));
     info!("Starting dispatcher loop");
     while running.load(Ordering::SeqCst) {
-        dispatcher_handler.tick(rt.clone());
+        if let Err(e) = dispatcher_handler.tick(rt.clone()) {
+            error!("Error occurred in dispatcher tick: {}", e);
+            return Err(e);
+        }
         std::thread::sleep(check_interval);
     }
 
@@ -160,7 +168,7 @@ fn load_config(config_path: String) -> Vec<String> {
     }
 }
 
-async fn create_service() -> Result<Ec2Client, EC2Error> {
+async fn create_service() -> Ec2Client {
     let region_provider = RegionProviderChain::default_provider().or_else("us-east-2");
     let behavior = BehaviorVersion::latest();
     let config = aws_config::defaults(behavior)
@@ -169,17 +177,20 @@ async fn create_service() -> Result<Ec2Client, EC2Error> {
         .await;
     let client = Ec2Client::new(&config);
 
-    Ok(client)
+    client
 }
 
-async fn is_instance_ready(instance_id: &str) -> Result<bool, Box<dyn std::error::Error>> {
-    let ec2 = create_service().await?;
+async fn is_instance_ready(instance_id: &str, ec2: &Ec2Client) -> Result<bool, DispatcherError> {
     info!("Checking if instance {} is stopped...", instance_id);
     let resp = ec2
         .describe_instances()
         .instance_ids(instance_id)
         .send()
-        .await?;
+        .await
+        .map_err(|e| {
+            error!("Failed to describe instances: {}", e);
+            DispatcherError::Ec2Error(e.into())
+        })?;
 
     let state = resp
         .reservations()
@@ -192,20 +203,30 @@ async fn is_instance_ready(instance_id: &str) -> Result<bool, Box<dyn std::error
 
     match state {
         Some(s) => {
-            let name = s.name().unwrap().as_str();
-            if name == "stopped" {
-                info!("Instance is stopped, ready to run command");
-                return Ok(true);
-            } else if name == "shutting-down" || name == "terminated" {
-                info!("Instance is shutting down or terminated, cannot run command");
-                return Ok(false);
-            } else {
-                info!("Instance is not stopped yet, current state: {name}");
-                return Ok(false);
+            match s.name(){
+                Some(name) => {
+                    match name {
+                        InstanceStateName::Stopped => {
+                            info!("Instance {} is stopped", instance_id);
+                            Ok(true)
+                        },
+                        InstanceStateName::Running => {
+                            info!("Instance {} is running", instance_id);
+                            Ok(false)
+                        },
+                        _ => {
+                            warn!("Instance {} is in state {:?}", instance_id, name);
+                            Ok(false)
+                        }
+                    }
+                },
+                None => {
+                    warn!("Instance state name is unknown");
+                    Ok(false)
+                }
             }
-        }
-
-        None => {
+            
+        } None => {
             warn!("Instance state is unknown");
             return Ok(false);
         }

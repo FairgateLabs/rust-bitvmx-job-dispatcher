@@ -1,4 +1,3 @@
-//TODO: Personalized Errors
 use anyhow::Result;
 use aws_service::dispatcher_loop;
 use bitvmx_broker::{
@@ -16,7 +15,7 @@ use std::{
 };
 
 use clap::{Parser, command};
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{
     EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -104,7 +103,11 @@ fn main() -> Result<(), anyhow::Error> {
         running,
         rt,
         "./config.json".to_string(),
-    )?;
+    )
+    .map_err(|e| {
+        error!("Dispatcher loop error: {}", e);
+        e
+    })?;
 
     info!("Shutting down...");
 
