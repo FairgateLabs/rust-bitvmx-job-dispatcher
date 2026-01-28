@@ -41,6 +41,7 @@ impl JobContext {
     }
 }
 
+#[derive(Clone)]
 pub struct Dispatcher {
     jobs: HashMap<String, String>,
 }
@@ -128,7 +129,7 @@ impl Dispatcher {
             "Checking if instance {} is able to run the command",
             instance_id
         );
-        self.check_instance_status(&ec2_client, &ssm_client, instance_id)
+        self.wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, instance_id)
             .await?;
         debug!("Instance {} is able to run the command", instance_id);
 
@@ -142,12 +143,12 @@ impl Dispatcher {
             .await?;
 
         self.download_file(&s3_client, &context).await?;
-
         debug!("File downloaded");
 
         debug!("Stopping instance {}", instance_id);
         self.stop_instance(&ec2_client, instance_id).await?;
         debug!("Instance stopped");
+        
         Ok(())
     }
 
@@ -172,7 +173,7 @@ impl Dispatcher {
 
         Ok(())
     }
-    async fn check_instance_status(
+    async fn wait_for_instance_to_be_able_to_run_command(
         &self,
         client: &Ec2Client,
         ssm_client: &SsmClient,
