@@ -40,4 +40,7 @@ pub enum DispatcherError {
 
     #[error("Mutex Poisoned: {0}")]
     MutexPoisoned(String),
+
+    #[error("Storage error {0}")]
+    StorageError(#[from] storage_backend::error::StorageError),
 }

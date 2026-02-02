@@ -1,12 +1,8 @@
 use std::{
-    fs,
-    net::{IpAddr, Ipv4Addr},
-    sync::{
+    fs, net::{IpAddr, Ipv4Addr}, rc::Rc, sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-    },
-    thread,
-    time::Duration,
+    }, thread, time::Duration
 };
 
 use anyhow::Result;
@@ -17,6 +13,7 @@ use bitvmx_broker::{
 };
 
 use bitvmx_aws_job_dispatcher::dispatcher_loop;
+use storage_backend::storage::Storage;
 use tokio::runtime::Runtime;
 use tracing::{debug, info};
 use tracing_subscriber::{
@@ -83,11 +80,18 @@ fn start_dispatcher(
 
         let check_interval = Duration::from_secs(1);
         debug!("Starting dispatcher loop (Test)");
+        let storage_config = storage_backend::storage_config::StorageConfig::new(
+            "temp-runs/storage_ping_test.db".to_string(),
+            None,
+        );
+        let storage = Rc::new(Storage::new(&storage_config).map_err(|e| format!("Storage init error: {e}"))?);
+
         if let Err(e) = dispatcher_loop(
             channel,
             check_interval,
             running,
             rt.clone(),
+            storage,
             "config/config.json".to_string(),
         ) {
             return Err(format!("dispatcher error: {e}"));

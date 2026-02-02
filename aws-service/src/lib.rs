@@ -1,17 +1,17 @@
 mod dispatcher_error;
 pub mod dispatcher_job;
 mod dispatcher_module;
+mod dispatcher_storage;
 
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
 use aws_sdk_ec2::{Client as Ec2Client, types::InstanceStateName};
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
+use storage_backend::storage::Storage;
 use std::{
-    collections::HashMap,
-    sync::{
+    collections::HashMap, rc::Rc, sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-    },
-    time::Duration,
+    }, time::Duration
 };
 use tokio::runtime::{Handle, Runtime};
 use tracing::{debug, error, info, warn};
@@ -20,7 +20,7 @@ use utils::{Msg, PingMessage};
 use crate::{
     dispatcher_error::DispatcherError,
     dispatcher_job::ResultMessage,
-    dispatcher_module::{Dispatcher, JobContext},
+    dispatcher_module::{Dispatcher, JobContext}, dispatcher_storage::DispatcherStorage,
 };
 
 pub fn process_msg(dispatcher: &mut Dispatcher, msg: &str) -> Option<JobContext> {
@@ -31,32 +31,35 @@ pub fn process_msg(dispatcher: &mut Dispatcher, msg: &str) -> Option<JobContext>
 
 pub struct DispatcherHandler {
     channel: DualChannel,
-    working_instance: HashMap<String, (bool, Option<JobContext>, Option<Identifier>)>,
+    working_instances: HashMap<String, (bool, Option<JobContext>, Option<Identifier>)>,
     pending_jobs: Vec<(Identifier, JobContext)>,
     dispatcher: Dispatcher,
+    storage: DispatcherStorage,
     handle: Handle
 }
 
 impl DispatcherHandler {
-    pub async fn new(channel: DualChannel, config_path: String, handle: Handle) -> Result<Self, DispatcherError> {
+    pub async fn new(channel: DualChannel, config_path: String, handle: Handle, storage: Rc<Storage>) -> Result<Self, DispatcherError> {
         let dispatcher = Dispatcher::new();
         let instance_ids = load_config(config_path);
         if instance_ids.is_empty() {
             panic!("No instance IDs provided in the config file");
         }
-        let mut working_instance = HashMap::new();
+        let storage = DispatcherStorage::new(storage);
+        let mut working_instances = HashMap::new();
         let ec2_client = create_service().await;
         for instance_id in instance_ids {
             let ready = is_instance_ready(&instance_id, &ec2_client).await?;
-            working_instance.insert(instance_id.clone(), (ready, None, None));
+            working_instances.insert(instance_id.clone(), (ready, None, None));
         }
 
         Ok(Self {
             channel,
-            working_instance,
+            working_instances,
             pending_jobs: Vec::new(),
             dispatcher,
             handle,
+            storage,
         })
     }
 
@@ -78,7 +81,7 @@ impl DispatcherHandler {
                 self.channel.send(&msg.id, pong)?;
             } else if let Some(context) = process_msg(&mut self.dispatcher, &msg.raw) {
                 info!("Dispatching job ID: {}", context.job_id);
-                //Save pending job
+                self.storage.save_pending_job(&msg.id, &context)?;
                 self.pending_jobs.push((msg.id, context));
             } else {
                 error!("Error processing message: {}", msg);
@@ -87,7 +90,7 @@ impl DispatcherHandler {
 
         if !self.pending_jobs.is_empty() {
             let ready_instances_ids: Vec<String> = self
-                .working_instance
+                .working_instances
                 .iter()
                 .filter_map(|(id, (ready, _, _))| if *ready { Some(id.clone()) } else { None })
                 .collect();
@@ -97,8 +100,8 @@ impl DispatcherHandler {
             if !ready_instances_ids.is_empty() {
                 for ready_instance_id in ready_instances_ids {
                     if let Some((id, context)) = self.pending_jobs.pop() {
-                        //Delete Pending Job and Save Working Instance Data
-                        self.working_instance
+                        self.storage.change_to_working_instance(&ready_instance_id, &id, &context)?;
+                        self.working_instances
                             .insert(ready_instance_id.clone(), (false, Some(context.clone()), Some(id)));
                         let dispatcher = self.dispatcher.clone();
                         self.handle.spawn(async move {
@@ -106,7 +109,7 @@ impl DispatcherHandler {
                                 error!("Error processing {}: {:?}", ready_instance_id, e);
                             }
                         });
-                        std::thread::sleep(Duration::from_secs(5));
+                        std::thread::sleep(Duration::from_secs(5)); //TODO: Think of a better way to handle this
                     }
                 }
             }
@@ -117,7 +120,7 @@ impl DispatcherHandler {
             .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
             .block_on(create_service());
 
-        for (instance_id, (finished, context, id)) in self.working_instance.iter_mut() {
+        for (instance_id, (finished, context, id)) in self.working_instances.iter_mut() {
             if !*finished {
                 if rt
                     .lock()
@@ -135,6 +138,7 @@ impl DispatcherHandler {
                             error!("Failed to send result: {}", e);
                         }
                     }
+                    self.storage.delete_working_instance(instance_id)?;
                 } else {
                     debug!("Instance {} is still not ready", instance_id);
                 }
@@ -150,13 +154,14 @@ pub fn dispatcher_loop(
     check_interval: Duration,
     running: Arc<AtomicBool>,
     rt: Arc<Mutex<Runtime>>,
+    storage: Rc<Storage>,
     config_path: String,
 ) -> Result<(), DispatcherError> {
     let handle = rt.lock().map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?.handle().clone();
     let mut dispatcher_handler = rt
         .lock()
         .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
-        .block_on(DispatcherHandler::new(channel, config_path, handle))?;
+        .block_on(DispatcherHandler::new(channel, config_path, handle, storage))?;
 
     info!("Starting dispatcher loop");
     while running.load(Ordering::SeqCst) {

@@ -9,6 +9,7 @@ use aws_sdk_ssm::{
     Client as SsmClient,
     types::{CommandInvocationStatus, PingStatus},
 };
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, time::Duration};
 use tokio::{
     fs::File,
@@ -17,7 +18,7 @@ use tokio::{
 };
 use tracing::{debug, error, info};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct JobContext {
     pub job_id: String,
     pub input_value: Vec<u8>,
@@ -157,7 +158,7 @@ impl Dispatcher {
         client: &S3Client,
         context: &JobContext,
     ) -> Result<(), DispatcherError> {
-        let bucket = "prueba-zkp";
+        let bucket = "prueba-zkp2";
         let key = format!("input_{}.bin", context.job_id);
 
         client
@@ -169,7 +170,7 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        info!("File uploaded to S3: s3://{}/{}", bucket, key);
+        debug!("File uploaded to S3: s3://{}/{}", bucket, key);
 
         Ok(())
     }
@@ -296,6 +297,7 @@ impl Dispatcher {
         client: &Ec2Client,
         instance_id: &str,
     ) -> Result<(), DispatcherError> {
+        //TODO: Start from snapshot
         client
             .start_instances()
             .instance_ids(instance_id)
@@ -329,8 +331,8 @@ impl Dispatcher {
     ) -> Result<String, DispatcherError> {
         let elf = "/home/ec2-user/rust-bitvmx-zk-proof/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin";
         let host_bin = "/home/ec2-user/rust-bitvmx-zk-proof/target/release/host";
-        let output_file = format!("s3://prueba-zkp/output_{}.json", context.job_id);
-        let input_file = format!("s3://prueba-zkp/input_{}.bin", context.job_id);
+        let output_file = format!("s3://prueba-zkp2/output_{}.json", context.job_id);
+        let input_file = format!("s3://prueba-zkp2/input_{}.bin", context.job_id);
 
         let command_to_send = format!(
             "aws s3 cp {input_file} /tmp/input.bin && \
@@ -344,6 +346,7 @@ impl Dispatcher {
             --input /tmp/stark_proof.bin \
             --json /tmp/output.json \
             --json-input /tmp/output.json \
+            > /tmp/upload.log 2>&1 \
             && aws s3 cp /tmp/output.json {output_file} > /tmp/upload.log 2>&1"
         );
 
@@ -420,8 +423,8 @@ impl Dispatcher {
         client: &S3Client,
         context: &JobContext,
     ) -> Result<(), DispatcherError> {
-        let bucket = "prueba-zkp";
-        let key = "output.json";
+        let bucket = "prueba-zkp2";
+        let key = format!("output_{}.json", context.job_id);
         let resp = client
             .get_object()
             .bucket(bucket)
@@ -430,7 +433,7 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        let mut file = File::create(format!("{}/output.json", context.command_file_path)).await?;
+        let mut file = File::create(format!("{}/output_{}.json", context.command_file_path, context.job_id)).await?;
         let mut body = resp.body.into_async_read();
         copy(&mut body, &mut file).await?;
 

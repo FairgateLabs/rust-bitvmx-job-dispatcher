@@ -53,18 +53,19 @@ if ! command -v aws >/dev/null 2>&1; then
     rm -rf "$tmpdir"
 fi
 
-read -r -p "Enter destination directory for clone: " DEST_DIR
-if [[ -z "$DEST_DIR" ]]; then
-    echo "Destination directory cannot be empty" >&2
-    exit 1
-fi
-
 # Install RiscZero
 curl -L https://risczero.com/install | bash
 source ~/.bashrc
 cargo install cargo-binstall
 cargo binstall cargo-risczero --version 3.0.4
 rzup install
+
+# Prompt for destination directory
+read -r -p "Enter destination directory for clone: " DEST_DIR
+if [[ -z "$DEST_DIR" ]]; then
+    echo "Destination directory cannot be empty" >&2
+    exit 1
+fi
 
 mkdir -p "$DEST_DIR"
 git clone https://github.com/FairgateLabs/rust-bitvmx-zk-proof.git "$DEST_DIR"

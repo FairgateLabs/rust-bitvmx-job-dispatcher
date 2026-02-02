@@ -5,13 +5,12 @@ use bitvmx_broker::{
     identification::allow_list::AllowList,
     rpc::{BrokerConfig, tls_helper::Cert},
 };
+use storage_backend::{storage::Storage, storage_config::StorageConfig};
 use std::{
-    fs,
-    net::{IpAddr, Ipv4Addr},
-    sync::{
+    fs, net::{IpAddr, Ipv4Addr}, rc::Rc, sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-    },
+    }
 };
 
 use clap::{Parser, command};
@@ -97,11 +96,15 @@ fn main() -> Result<(), anyhow::Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
+    let storage_config = StorageConfig::new(args.storage_path, None);
+    let storage = Rc::new(Storage::new(&storage_config)?);
+
     dispatcher_loop(
         channel,
         check_interval,
         running,
         rt,
+        storage,
         "./config.json".to_string(),
     )
     .map_err(|e| {
