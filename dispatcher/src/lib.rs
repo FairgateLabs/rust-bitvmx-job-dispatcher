@@ -119,15 +119,19 @@ where
                                 self.dispatcher
                                     .process_result(&context.job_id, buf, status)?;
 
-                            self.channel.send(
+                            let result = self.channel.send(
                                 &id,
                                 ResultMessage::new(context.job_id.clone(), result).to_string()?,
                             )?;
 
-                            self.storage
-                                .lock()
-                                .map_err(|_| DispatcherError::MutexPoisoned)?
-                                .remove_job(&context.job_id)?;
+                            if result {
+                                self.storage
+                                    .lock()
+                                    .map_err(|_| DispatcherError::MutexPoisoned)?
+                                    .remove_job(&context.job_id)?;
+                            } else {
+                                warn!("Failed to send job result to client");
+                            }
                             Ok(false)
                         }
                         Ok(None) => Ok(true),
