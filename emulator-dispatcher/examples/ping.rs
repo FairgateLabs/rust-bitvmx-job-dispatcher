@@ -24,7 +24,7 @@ pub mod emulator {
     use std::net::Ipv4Addr;
     use std::{fs, net::IpAddr, thread::sleep, time::Duration};
     use tracing::info;
-    use utils::PingMessage;
+    use dispatcher_utils::PingMessage;
 
     pub(crate) fn run_job(paths: Paths, port: u16) -> Result<(), anyhow::Error> {
         info!("Starting challenge example...");

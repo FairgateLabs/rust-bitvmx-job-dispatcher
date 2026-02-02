@@ -18,7 +18,7 @@ use std::{
 use storage_backend::storage::Storage;
 use tokio::runtime::{Handle, Runtime};
 use tracing::{debug, error, info, warn};
-use utils::{Msg, PingMessage};
+use dispatcher_utils::{Msg, PingMessage};
 
 use crate::{
     dispatcher_error::DispatcherError,

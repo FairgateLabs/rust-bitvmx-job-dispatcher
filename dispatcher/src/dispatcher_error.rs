@@ -34,5 +34,5 @@ pub enum DispatcherError {
     BrokerError(#[from] bitvmx_broker::rpc::errors::BrokerError),
 
     #[error("Utils error {0}")]
-    UtilsError(#[from] utils::error::UtilsError),
+    UtilsError(#[from] dispatcher_utils::error::UtilsError),
 }

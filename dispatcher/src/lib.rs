@@ -25,7 +25,7 @@ use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
 use tracing::{debug, info, warn};
-use utils::{Msg, PingMessage};
+use dispatcher_utils::{Msg, PingMessage};
 
 use crate::{
     dispatcher_error::DispatcherError,

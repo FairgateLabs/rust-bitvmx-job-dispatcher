@@ -4,7 +4,7 @@ use bitvmx_broker::identification::identifier::Identifier;
 use serde::de::DeserializeOwned;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::info;
-use utils::Msg;
+use dispatcher_utils::Msg;
 
 use crate::{
     dispatcher_error::DispatcherError,

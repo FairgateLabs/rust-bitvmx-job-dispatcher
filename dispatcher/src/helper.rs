@@ -5,7 +5,7 @@ use std::{
 
 use serde::de::DeserializeOwned;
 use tracing::info;
-use utils::Msg;
+use dispatcher_utils::Msg;
 
 use crate::{
     dispatcher_error::DispatcherError,

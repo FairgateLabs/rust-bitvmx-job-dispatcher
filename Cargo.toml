@@ -7,5 +7,5 @@ members = [
     "emulator-dispatcher",
     "jobtypes", 
     "aws-service", 
-    "utils",
+    "dispatcher-utils",
 ]
