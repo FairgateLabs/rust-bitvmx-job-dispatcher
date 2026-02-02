@@ -66,6 +66,7 @@ pub mod prover {
     }
 }
 
+#[allow(dead_code)]
 fn main() {
     if let Err(e) = prover::run_proof(10000) {
         eprintln!("Error: {}", e);

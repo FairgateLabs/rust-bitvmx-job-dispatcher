@@ -5,13 +5,16 @@ use bitvmx_broker::{
     identification::allow_list::AllowList,
     rpc::{BrokerConfig, tls_helper::Cert},
 };
-use storage_backend::{storage::Storage, storage_config::StorageConfig};
 use std::{
-    fs, net::{IpAddr, Ipv4Addr}, rc::Rc, sync::{
+    fs,
+    net::{IpAddr, Ipv4Addr},
+    rc::Rc,
+    sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-    }
+    },
 };
+use storage_backend::{storage::Storage, storage_config::StorageConfig};
 
 use clap::{Parser, command};
 use tracing::{error, info};

@@ -1,8 +1,13 @@
 use std::{
-    fs, net::{IpAddr, Ipv4Addr}, rc::Rc, sync::{
+    fs,
+    net::{IpAddr, Ipv4Addr},
+    rc::Rc,
+    sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-    }, thread, time::Duration
+    },
+    thread,
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -84,7 +89,8 @@ fn start_dispatcher(
             "temp-runs/storage_ping_test.db".to_string(),
             None,
         );
-        let storage = Rc::new(Storage::new(&storage_config).map_err(|e| format!("Storage init error: {e}"))?);
+        let storage =
+            Rc::new(Storage::new(&storage_config).map_err(|e| format!("Storage init error: {e}"))?);
 
         if let Err(e) = dispatcher_loop(
             channel,

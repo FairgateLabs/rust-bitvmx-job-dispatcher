@@ -22,7 +22,7 @@ This project can offload work to an AWS EC2 instance. The following describes th
 
 Prerequisites
 - An S3 bucket for input and result files.
-- An EC2 instance (avoid Amazon Linux if known incompatible).
+- An EC2 instance (avoid Amazon Linux, it is known to be incompatible).
 
 Required software on the instance
 - Git

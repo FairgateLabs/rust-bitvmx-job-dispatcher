@@ -22,9 +22,8 @@ if ! command -v docker >/dev/null 2>&1; then
     sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
     sudo usermod -aG docker $USER
-    newgrp docker
 
-    if docker info >/dev/null 2>&1; then
+    if sudo docker info >/dev/null 2>&1; then
         echo "Docker installation successful"
     else
         echo "Docker installation failed" >&2
@@ -35,6 +34,7 @@ if ! command -v docker >/dev/null 2>&1; then
         sudo systemctl enable docker
         sudo systemctl start docker
     fi
+fi
 
 ## Install Rust
 if ! command -v rustup >/dev/null 2>&1; then
@@ -73,4 +73,4 @@ git clone https://github.com/FairgateLabs/rust-bitvmx-zk-proof.git "$DEST_DIR"
 cd "$DEST_DIR/rust-bitvmx-zk-proof"
 cargo run --release
 
-
+sudo poweroff

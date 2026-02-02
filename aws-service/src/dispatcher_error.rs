@@ -43,4 +43,13 @@ pub enum DispatcherError {
 
     #[error("Storage error {0}")]
     StorageError(#[from] storage_backend::error::StorageError),
+
+    #[error("No instance IDs were given")]
+    NoInstanceIds,
+
+    #[error("Could not parse {0}")]
+    ParseError(String),
+
+    #[error("Pending Job not found")]
+    PendingJobNotFound,
 }

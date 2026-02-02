@@ -18,7 +18,7 @@ use tokio::{
 };
 use tracing::{debug, error, info};
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct JobContext {
     pub job_id: String,
     pub input_value: Vec<u8>,
@@ -149,7 +149,7 @@ impl Dispatcher {
         debug!("Stopping instance {}", instance_id);
         self.stop_instance(&ec2_client, instance_id).await?;
         debug!("Instance stopped");
-        
+
         Ok(())
     }
 
@@ -433,7 +433,11 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        let mut file = File::create(format!("{}/output_{}.json", context.command_file_path, context.job_id)).await?;
+        let mut file = File::create(format!(
+            "{}/output_{}.json",
+            context.command_file_path, context.job_id
+        ))
+        .await?;
         let mut body = resp.body.into_async_read();
         copy(&mut body, &mut file).await?;
 

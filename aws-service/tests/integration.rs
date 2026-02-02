@@ -1,8 +1,13 @@
 use std::{
-    fs, net::{IpAddr, Ipv4Addr}, rc::Rc, sync::{
+    fs,
+    net::{IpAddr, Ipv4Addr},
+    rc::Rc,
+    sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
-    }, thread, time::Duration
+    },
+    thread,
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -25,15 +30,31 @@ mod aws;
 
 const PORT: u16 = 10300;
 
+#[ignore]
 #[test]
 fn test_aws_dispatcher() -> Result<(), anyhow::Error> {
     init_trace()?;
     let mut server_handler = init_server(PORT)?;
     let running_dispatcher = Arc::new(AtomicBool::new(true));
-    let dispatcher_handler = start_dispatcher(running_dispatcher.clone())?;
+    let _dispatcher_handler = start_dispatcher(
+        running_dispatcher.clone(),
+        "../config/test0.json".to_string(),
+    )?;
     let zkp_handler = start_zkp(PORT);
     std::thread::sleep(std::time::Duration::from_secs(9));
-    //TODO: Test storage is working
+
+    info!("⛔ Shutting down dispatcher...");
+    running_dispatcher.store(false, Ordering::SeqCst);
+    std::thread::sleep(std::time::Duration::from_secs(5));
+
+    info!("🔄 Restarting emulator...");
+    let running_dispatcher = Arc::new(AtomicBool::new(true));
+    let dispatcher_handler = start_dispatcher(
+        running_dispatcher.clone(),
+        "../config/test1.json".to_string(),
+    )?;
+    info!("✅ Emulator restarted");
+
     zkp_handler.join().unwrap()?;
     info!("ZKP finished, shutting everything down...");
     server_handler.close();
@@ -61,6 +82,7 @@ fn init_trace() -> Result<(), anyhow::Error> {
 
 fn start_dispatcher(
     running: Arc<AtomicBool>,
+    config_path: String,
 ) -> Result<thread::JoinHandle<Result<(), String>>, anyhow::Error> {
     let rt = Arc::new(Mutex::new(Runtime::new().unwrap()));
     let handle = thread::spawn(move || {
@@ -80,18 +102,17 @@ fn start_dispatcher(
 
         let check_interval = Duration::from_secs(1);
         debug!("Starting dispatcher loop (Test)");
-        let storage_config = StorageConfig::new(
-            "temp-runs/storage_aws_dispatcher_test.db".to_string(),
-            None,
-        );
-        let storage = Rc::new(Storage::new(&storage_config).map_err(|e| format!("Storage init error: {e}"))?);
+        let storage_config =
+            StorageConfig::new("temp-runs/storage_aws_dispatcher_test.db".to_string(), None);
+        let storage =
+            Rc::new(Storage::new(&storage_config).map_err(|e| format!("Storage init error: {e}"))?);
         if let Err(e) = dispatcher_loop(
             channel,
             check_interval,
             running,
             rt.clone(),
             storage,
-            "config/config.json".to_string(),
+            config_path.clone(),
         ) {
             return Err(format!("dispatcher error: {e}"));
         }
