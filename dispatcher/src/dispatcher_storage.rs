@@ -30,7 +30,7 @@ impl DispatcherStorage {
 
     pub fn remove_job(&self, job_id: &str) -> Result<(), DispatcherError> {
         let key = job_key(job_id);
-        self.storage.delete(&key)?;
+        self.storage.remove(&key, None)?;
         Ok(())
     }
 
