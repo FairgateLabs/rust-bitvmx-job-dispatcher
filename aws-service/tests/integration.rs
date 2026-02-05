@@ -96,9 +96,10 @@ fn start_dispatcher(
                 .unwrap();
 
         let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap());
-        let channel =
-            DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt.clone())
-                .unwrap();
+        // let channel =
+        //     DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt.clone())
+        //         .unwrap();
+        let channel = DualChannel::new(&config, cert, Some(my_id), allow_list).unwrap();
 
         let check_interval = Duration::from_secs(1);
         debug!("Starting dispatcher loop (Test)");
