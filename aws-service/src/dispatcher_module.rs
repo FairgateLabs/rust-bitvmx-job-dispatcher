@@ -114,6 +114,10 @@ impl Dispatcher {
         instance_id: &str,
         context: JobContext,
     ) -> Result<(), DispatcherError> {
+        info!(
+            "Managing petition for job ID: {} on instance ID: {}",
+            context.job_id, instance_id
+        );
         //TODO: Add Deletion of already used files & name them with job_id
         let (ec2_client, config) = self.create_service().await;
 
@@ -441,6 +445,92 @@ impl Dispatcher {
         let mut body = resp.body.into_async_read();
         copy(&mut body, &mut file).await?;
 
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::load_config;
+
+    use super::*;
+    use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
+    use aws_sdk_ec2::Client as Ec2Client;
+    use tracing_subscriber::{
+        EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
+    };
+
+    #[tokio::test]
+    async fn test_connects_to_aws_ec2() {
+        init_trace().unwrap();
+
+        let region_provider = RegionProviderChain::default_provider().or_else("us-east-2");
+
+        let config = aws_config::defaults(BehaviorVersion::latest())
+            .region(region_provider)
+            .load()
+            .await;
+
+        let client = Ec2Client::new(&config);
+
+        let resp = client
+            .describe_regions()
+            .send()
+            .await
+            .expect("Failed to connect to EC2");
+
+        let regions = resp.regions();
+
+        assert!(!regions.is_empty(), "No regions returned from EC2");
+
+        info!("Connected to AWS EC2. Regions count: {}", regions.len());
+    }
+
+    #[tokio::test]
+    async fn test_functions() {
+        init_trace().unwrap();
+
+        let dispatcher = Dispatcher::new();
+
+        let (ec2_client, config) = dispatcher.create_service().await;
+
+        let _ssm_client = SsmClient::new(&config);
+        let s3_client = S3Client::new(&config);
+
+        let config_path = format!("{}/config/config.json", env!("CARGO_MANIFEST_DIR"));
+        let instance_id = &load_config(config_path)[0]; // TODO: use all instance ids
+
+        info!("Starting instance {}", instance_id);
+        dispatcher
+            .start_instance(&ec2_client, instance_id)
+            .await
+            .unwrap();
+        info!("Instance started");
+
+        let context = JobContext::new(
+            "test_job".to_string(),
+            vec![1, 2, 3, 4],
+            "elf".to_string(),
+            "command_file_path".to_string(),
+        );
+        dispatcher.upload_file(&s3_client, &context).await.unwrap();
+
+        dispatcher
+            .stop_instance(&ec2_client, instance_id)
+            .await
+            .unwrap();
+        info!("Instance stopped");
+    }
+
+    fn init_trace() -> Result<(), anyhow::Error> {
+        let filter = EnvFilter::builder()
+            .parse("info,tarpc=off")
+            .expect("Invalid filter");
+
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
+            .try_init()?;
         Ok(())
     }
 }

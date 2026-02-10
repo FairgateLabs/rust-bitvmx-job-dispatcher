@@ -100,6 +100,8 @@ impl DispatcherStorage {
 mod tests {
     use std::{env, path::PathBuf};
 
+    use crate::load_config;
+
     use super::*;
     use rand::{RngCore, rng};
     use storage_backend::storage_config::StorageConfig;
@@ -130,15 +132,20 @@ mod tests {
             "elf".to_string(),
             "command_file_path".to_string(),
         );
-        let instance_id = "i-123456789".to_string();
+        let config_path = format!("{}/config/config.json", env!("CARGO_MANIFEST_DIR"));
+        let instance_id = &load_config(config_path)[0]; // TODO: use all instance ids
 
         dispatcher_storage.save_pending_job(&identifier_1, &context_1)?;
         dispatcher_storage.save_pending_job(&identifier_2, &context_2)?;
         dispatcher_storage.update_instance_status(&instance_id, &identifier_1)?;
-        let (restored_pending_jobs, restored_instances_status) = dispatcher_storage.restore_data()?;
-        
-        let mut result_hashmap =  HashMap::new();
-        result_hashmap.insert(instance_id, (false, Some(context_1), Some(identifier_1)));
+        let (restored_pending_jobs, restored_instances_status) =
+            dispatcher_storage.restore_data()?;
+
+        let mut result_hashmap = HashMap::new();
+        result_hashmap.insert(
+            instance_id.to_string(),
+            (false, Some(context_1), Some(identifier_1)),
+        );
         assert_eq!(restored_pending_jobs, vec![(identifier_2, context_2)]);
         assert_eq!(restored_instances_status, result_hashmap);
         Ok(())

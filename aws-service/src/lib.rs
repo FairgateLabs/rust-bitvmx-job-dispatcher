@@ -6,6 +6,7 @@ mod dispatcher_storage;
 use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
 use aws_sdk_ec2::{Client as Ec2Client, types::InstanceStateName};
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
+use dispatcher_utils::{Msg, PingMessage};
 use std::{
     collections::HashMap,
     rc::Rc,
@@ -18,7 +19,6 @@ use std::{
 use storage_backend::storage::Storage;
 use tokio::runtime::{Handle, Runtime};
 use tracing::{debug, error, info, warn};
-use dispatcher_utils::{Msg, PingMessage};
 
 use crate::{
     dispatcher_error::DispatcherError,
@@ -40,14 +40,16 @@ pub struct DispatcherHandler {
     dispatcher: Dispatcher,
     storage: DispatcherStorage,
     handle: Handle,
+    ec2: Ec2Client,
 }
 
 impl DispatcherHandler {
-    pub async fn new(
+    pub fn new(
         channel: DualChannel,
         config_path: String,
         handle: Handle,
         storage: Rc<Storage>,
+        ec2: Ec2Client,
     ) -> Result<Self, DispatcherError> {
         let dispatcher = Dispatcher::new();
         let instance_ids = load_config(config_path);
@@ -73,10 +75,11 @@ impl DispatcherHandler {
             dispatcher,
             handle,
             storage,
+            ec2,
         })
     }
 
-    pub fn tick(&mut self, rt: Arc<Mutex<Runtime>>) -> Result<(), DispatcherError> {
+    pub fn tick(&mut self) -> Result<(), DispatcherError> {
         let msg = self.channel.recv()?;
         if let Some(msg) = msg {
             let msg = Msg::from_msg(msg.clone());
@@ -134,19 +137,14 @@ impl DispatcherHandler {
             }
         }
 
-        let ec2 = rt
-            .lock()
-            .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
-            .block_on(create_service());
-
         for (instance_id, (finished, context, id)) in self.instances_status.iter_mut() {
             if !*finished {
-                if rt
-                    .lock()
-                    .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
-                    .block_on(is_instance_ready(&instance_id, &ec2))
-                    .unwrap_or(false)
-                {
+                let ready = tokio::task::block_in_place(|| {
+                    self.handle
+                        .block_on(is_instance_ready(&instance_id, &self.ec2))
+                        .unwrap_or(false)
+                });
+                if ready {
                     *finished = true;
                     let job_id = &context.as_ref().unwrap().job_id;
                     if let Some(result) = self.dispatcher.process_result(&job_id) {
@@ -163,7 +161,6 @@ impl DispatcherHandler {
                 }
             }
         }
-
         Ok(())
     }
 }
@@ -176,40 +173,34 @@ pub fn dispatcher_loop(
     storage: Rc<Storage>,
     config_path: String,
 ) -> Result<(), DispatcherError> {
-    let handle = rt
-        .lock()
-        .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
-        .handle()
-        .clone();
-    let mut dispatcher_handler = rt
-        .lock()
-        .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?
-        .block_on(DispatcherHandler::new(
-            channel,
-            config_path,
-            handle,
-            storage,
-        ))?;
-
     info!("Starting dispatcher loop");
+
+    let runtime = rt
+        .lock()
+        .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?;
+    let ec2 = runtime.block_on(create_service());
+
+    let handle = runtime.handle().clone();
+    let mut dispatcher_handler =
+        DispatcherHandler::new(channel, config_path, handle, storage, ec2)?;
+
+    drop(runtime);
     while running.load(Ordering::SeqCst) {
-        if let Err(e) = dispatcher_handler.tick(rt.clone()) {
+        if let Err(e) = dispatcher_handler.tick() {
             error!("Error occurred in dispatcher tick: {}", e);
             return Err(e);
         }
         std::thread::sleep(check_interval);
-        debug!("Dispatcher tick completed");
     }
 
     Ok(())
 }
 
 fn load_config(config_path: String) -> Vec<String> {
-    let file = std::fs::File::open(config_path).expect("Could not open config file");
-    let reader = std::io::BufReader::new(file);
+    let file = std::fs::File::open(config_path);
+    let reader = std::io::BufReader::new(file.unwrap());
     let config: serde_json::Value =
         serde_json::from_reader(reader).expect("Could not parse config file");
-
     if let Some(instance_ids) = config.get("instance_ids") {
         instance_ids
             .as_array()
