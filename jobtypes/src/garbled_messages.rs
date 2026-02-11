@@ -42,6 +42,40 @@ impl DispatcherMessage for GarbledJobType {
                 ];
                 Ok((cmd, args, json))
             }
+            GarbledJobType::ProveLamport(labels_json, output_file_path) => {
+                std::fs::create_dir_all(output_file_path)?;
+                let json = format!("{output_file_path}/output.json");
+                let labels_file = format!("{output_file_path}/labels.json");
+                std::fs::write(&labels_file, labels_json)?;
+
+                let cmd =
+                    std::env::var("GNOVA_BIN").unwrap_or_else(|_| "../../rust-bitvmx-gc/target/release/gnova".to_string());
+                let args = vec![
+                    "prove-lamport".to_string(),
+                    "--labels".to_string(),
+                    labels_file,
+                    "--output".to_string(),
+                    output_file_path.clone(),
+                    "--json".to_string(),
+                    json.clone(),
+                ];
+                Ok((cmd, args, json))
+            }
+            GarbledJobType::VerifyLamport(proof_file_path, output_file_path) => {
+                std::fs::create_dir_all(output_file_path)?;
+                let json = format!("{output_file_path}/output.json");
+
+                let cmd =
+                    std::env::var("GNOVA_BIN").unwrap_or_else(|_| "../../rust-bitvmx-gc/target/release/gnova".to_string());
+                let args = vec![
+                    "verify-lamport".to_string(),
+                    "--proof".to_string(),
+                    proof_file_path.clone(),
+                    "--json".to_string(),
+                    json.clone(),
+                ];
+                Ok((cmd, args, json))
+            }
         }
     }
 
@@ -49,6 +83,8 @@ impl DispatcherMessage for GarbledJobType {
         match self {
             GarbledJobType::Prove(..) => "ProveResult".to_string(),
             GarbledJobType::Verify(..) => "VerifyResult".to_string(),
+            GarbledJobType::ProveLamport(..) => "ProveLamportResult".to_string(),
+            GarbledJobType::VerifyLamport(..) => "VerifyLamportResult".to_string(),
         }
     }
 }
@@ -59,4 +95,8 @@ pub enum GarbledJobType {
     Prove(Vec<u8>, String, String),
     /// Verify(proof_file_path, output_dir)
     Verify(String, String),
+    /// ProveLamport(serialized_labels_json, output_dir)
+    ProveLamport(Vec<u8>, String),
+    /// VerifyLamport(proof_file_path, output_dir)
+    VerifyLamport(String, String),
 }
