@@ -13,7 +13,7 @@ impl DispatcherMessage for GarbledJobType {
                 std::fs::write(&input_file, input_value)?;
 
                 let cmd =
-                    "../rust-bitvmx-gc/target/release/gnova".to_string();
+                    std::env::var("GNOVA_BIN").unwrap_or_else(|_| "../../rust-bitvmx-gc/target/release/gnova".to_string());
                 let args = vec![
                     "prove".to_string(),
                     "--circuit".to_string(),
@@ -32,7 +32,7 @@ impl DispatcherMessage for GarbledJobType {
                 let json = format!("{output_file_path}/output.json");
 
                 let cmd =
-                    "../rust-bitvmx-gc/target/release/gnova".to_string();
+                    std::env::var("GNOVA_BIN").unwrap_or_else(|_| "../../rust-bitvmx-gc/target/release/gnova".to_string());
                 let args = vec![
                     "verify".to_string(),
                     "--proof".to_string(),

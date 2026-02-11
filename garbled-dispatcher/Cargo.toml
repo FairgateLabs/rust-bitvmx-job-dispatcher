@@ -19,3 +19,7 @@ clap = { version = "4.5.32", features = ["derive"] }
 
 [dev-dependencies]
 config = "0.15.11"
+
+[[example]]
+name = "garbled_client"
+path = "examples/garbled_client.rs"
