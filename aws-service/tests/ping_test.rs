@@ -99,7 +99,7 @@ fn start_dispatcher(
             running,
             rt.clone(),
             storage,
-            "config/config.json".to_string(),
+            "config/config.yaml".to_string(),
         ) {
             return Err(format!("dispatcher error: {e}"));
         }

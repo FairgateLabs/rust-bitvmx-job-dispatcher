@@ -1,10 +1,11 @@
 use crate::{
+    config::AppConfig,
     dispatcher_error::DispatcherError,
     dispatcher_job::{DispatcherJob, ProverJobType},
 };
-use aws_config::{BehaviorVersion, SdkConfig, meta::region::RegionProviderChain};
+use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_sdk_ec2::{Client as Ec2Client, types::SummaryStatus};
-use aws_sdk_s3::Client as S3Client;
+use aws_sdk_s3::{Client as S3Client, config::Credentials};
 use aws_sdk_ssm::{
     Client as SsmClient,
     types::{CommandInvocationStatus, PingStatus},
@@ -16,7 +17,7 @@ use tokio::{
     io::copy,
     time::{Instant, sleep},
 };
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct JobContext {
@@ -45,13 +46,25 @@ impl JobContext {
 #[derive(Clone)]
 pub struct Dispatcher {
     jobs: HashMap<String, String>,
+    config: AppConfig,
 }
 
 impl Dispatcher {
-    pub fn new() -> Self {
+    pub fn new(config_path: String) -> Self {
+        let config = AppConfig::load(&config_path).unwrap();
         Self {
             jobs: HashMap::new(),
+            config,
         }
+    }
+
+    pub fn get_instance_ids(&self) -> Vec<String> {
+        self.config
+            .ec2
+            .instance_id
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect()
     }
 
     pub fn process_msg(&mut self, msg: &str) -> Result<JobContext, DispatcherError> {
@@ -82,7 +95,7 @@ impl Dispatcher {
             let command_file = format!("{}/output.json", command_file_path);
             match fs::read_to_string(&command_file) {
                 Ok(buf) => {
-                    debug!("Worker output from file: {}", buf);
+                    info!("Worker output from file: {}", buf);
                     match Self::extract_structured_json("ProveResult", &buf) {
                         Some(result) => return Some(result),
                         None => {
@@ -124,35 +137,35 @@ impl Dispatcher {
         let ssm_client = SsmClient::new(&config);
         let s3_client = S3Client::new(&config);
 
-        debug!("Starting instance {}", instance_id);
+        info!("Starting instance {}", instance_id);
         self.start_instance(&ec2_client, instance_id).await?;
-        debug!("Instance started");
+        info!("Instance started");
 
         self.upload_file(&s3_client, &context).await?;
 
-        debug!(
+        info!(
             "Checking if instance {} is able to run the command",
             instance_id
         );
         self.wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, instance_id)
             .await?;
-        debug!("Instance {} is able to run the command", instance_id);
+        info!("Instance {} is able to run the command", instance_id);
 
-        debug!("Sending command to instance {}", instance_id);
+        info!("Sending command to instance {}", instance_id);
         let command_id = self
             .send_command(&ssm_client, instance_id, &context)
             .await?;
-        debug!("Command sent to instance {}", instance_id);
+        info!("Command sent to instance {}", instance_id);
 
         self.wait_for_command_completion(&ssm_client, instance_id, &command_id)
             .await?;
 
         self.download_file(&s3_client, &context).await?;
-        debug!("File downloaded");
+        info!("File downloaded");
 
-        debug!("Stopping instance {}", instance_id);
+        info!("Stopping instance {}", instance_id);
         self.stop_instance(&ec2_client, instance_id).await?;
-        debug!("Instance stopped");
+        info!("Instance stopped");
 
         Ok(())
     }
@@ -162,7 +175,7 @@ impl Dispatcher {
         client: &S3Client,
         context: &JobContext,
     ) -> Result<(), DispatcherError> {
-        let bucket = "prueba-zkp2";
+        let bucket = &self.config.s3.bucket;
         let key = format!("input_{}.bin", context.job_id);
 
         client
@@ -174,7 +187,7 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        debug!("File uploaded to S3: s3://{}/{}", bucket, key);
+        info!("File uploaded to S3: s3://{}/{}", bucket, key);
 
         Ok(())
     }
@@ -207,13 +220,13 @@ impl Dispatcher {
                     error!("Instance {} is in state {}", instance_id, state);
                     return Err(DispatcherError::InstanceNotRunning);
                 }
-                _ => debug!("Instance state is {}, waiting for 'running'...", state),
+                _ => info!("Instance state is {}, waiting for 'running'...", state),
             }
 
             sleep(Duration::from_secs(1)).await;
         }
 
-        debug!("Instance is running, checking system and instance status...");
+        info!("Instance is running, checking system and instance status...");
 
         loop {
             let resp = client
@@ -255,7 +268,7 @@ impl Dispatcher {
             sleep(Duration::from_secs(1)).await;
         }
 
-        debug!("Instance Status is ok, checking SSM status...");
+        info!("Instance Status is ok, checking SSM status...");
 
         loop {
             let resp = ssm_client
@@ -268,7 +281,7 @@ impl Dispatcher {
                 if instance_info.instance_id() == Some(instance_id) {
                     match instance_info.ping_status() {
                         Some(&PingStatus::Online) => {
-                            debug!("SSM status is online");
+                            info!("SSM status is online");
                             return Ok(());
                         }
                         Some(&PingStatus::ConnectionLost) => {
@@ -285,12 +298,20 @@ impl Dispatcher {
     }
 
     async fn create_service(&self) -> (Ec2Client, SdkConfig) {
-        let region_provider = RegionProviderChain::default_provider().or_else("us-east-2");
-        let behavior = BehaviorVersion::latest();
-        let config = aws_config::defaults(behavior)
-            .region(region_provider)
+        let creds = Credentials::new(
+            self.config.aws.access_key_id.clone(),
+            self.config.aws.secret_access_key.clone(),
+            None,
+            None,
+            "static-loaded-from-config",
+        );
+
+        let config = aws_config::defaults(BehaviorVersion::latest())
+            .region(Region::new(self.config.aws.region.clone()))
+            .credentials_provider(creds)
             .load()
             .await;
+
         let client = Ec2Client::new(&config);
 
         (client, config)
@@ -333,10 +354,17 @@ impl Dispatcher {
         instance_id: &str,
         context: &JobContext,
     ) -> Result<String, DispatcherError> {
-        let elf = "/home/ec2-user/rust-bitvmx-zk-proof/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin";
-        let host_bin = "/home/ec2-user/rust-bitvmx-zk-proof/target/release/host";
-        let output_file = format!("s3://prueba-zkp2/output_{}.json", context.job_id);
-        let input_file = format!("s3://prueba-zkp2/input_{}.bin", context.job_id);
+        let elf = &self.config.paths.elf_path;
+        let host_bin = &self.config.paths.host_bin;
+
+        let output_file = format!(
+            "s3://{}/output_{}.json",
+            self.config.s3.bucket, context.job_id
+        );
+        let input_file = format!(
+            "s3://{}/input_{}.bin",
+            self.config.s3.bucket, context.job_id
+        );
 
         let command_to_send = format!(
             "aws s3 cp {input_file} /tmp/input.bin && \
@@ -427,7 +455,7 @@ impl Dispatcher {
         client: &S3Client,
         context: &JobContext,
     ) -> Result<(), DispatcherError> {
-        let bucket = "prueba-zkp2";
+        let bucket = &self.config.s3.bucket;
         let key = format!("output_{}.json", context.job_id);
         let resp = client
             .get_object()
@@ -437,11 +465,7 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        let mut file = File::create(format!(
-            "{}/output_{}.json",
-            context.command_file_path, context.job_id
-        ))
-        .await?;
+        let mut file = File::create(format!("{}/output.json", context.command_file_path)).await?;
         let mut body = resp.body.into_async_read();
         copy(&mut body, &mut file).await?;
 
@@ -451,8 +475,6 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod tests {
-    use crate::load_config;
-
     use super::*;
     use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
     use aws_sdk_ec2::Client as Ec2Client;
@@ -490,15 +512,15 @@ mod tests {
     async fn test_functions() {
         init_trace().unwrap();
 
-        let dispatcher = Dispatcher::new();
+        let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
+        let dispatcher = Dispatcher::new(config_path.clone());
 
         let (ec2_client, config) = dispatcher.create_service().await;
 
         let _ssm_client = SsmClient::new(&config);
         let s3_client = S3Client::new(&config);
 
-        let config_path = format!("{}/config/config.json", env!("CARGO_MANIFEST_DIR"));
-        let instance_id = &load_config(config_path)[0]; // TODO: use all instance ids
+        let instance_id = &dispatcher.get_instance_ids()[0]; // TODO: use all instance ids
 
         info!("Starting instance {}", instance_id);
         dispatcher

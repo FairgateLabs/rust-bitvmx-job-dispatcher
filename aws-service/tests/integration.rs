@@ -20,7 +20,7 @@ use bitvmx_broker::{
 use bitvmx_aws_job_dispatcher::dispatcher_loop;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
 use tokio::runtime::Runtime;
-use tracing::{debug, info};
+use tracing::info;
 use tracing_subscriber::{
     EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -36,7 +36,7 @@ fn test_aws_dispatcher() -> Result<(), anyhow::Error> {
     init_trace()?;
     let mut server_handler = init_server(PORT)?;
     let running_dispatcher = Arc::new(AtomicBool::new(true));
-    let config_path = format!("{}/config/config.json", env!("CARGO_MANIFEST_DIR"));
+    let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
 
     let dispatcher_handler = start_dispatcher(running_dispatcher.clone(), config_path.clone())?;
     let zkp_handler = start_zkp(PORT);
@@ -89,7 +89,7 @@ fn start_dispatcher(
         let channel = DualChannel::new(&config, cert, Some(my_id), allow_list).unwrap();
 
         let check_interval = Duration::from_secs(1);
-        debug!("Starting dispatcher loop (Test)");
+        info!("Starting dispatcher loop (Test)");
         let storage_path = format!("../temp-runs/storage_job_{}.db", std::process::id());
         let storage_config = StorageConfig::new(storage_path, None);
         let storage =

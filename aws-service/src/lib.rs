@@ -1,3 +1,4 @@
+mod config;
 mod dispatcher_error;
 pub mod dispatcher_job;
 mod dispatcher_module;
@@ -51,8 +52,8 @@ impl DispatcherHandler {
         storage: Rc<Storage>,
         ec2: Ec2Client,
     ) -> Result<Self, DispatcherError> {
-        let dispatcher = Dispatcher::new();
-        let instance_ids = load_config(config_path);
+        let dispatcher = Dispatcher::new(config_path.clone());
+        let instance_ids = dispatcher.get_instance_ids();
         if instance_ids.is_empty() {
             return Err(DispatcherError::NoInstanceIds);
         }
@@ -85,7 +86,7 @@ impl DispatcherHandler {
             let msg = Msg::from_msg(msg.clone());
             if let Some(message) = serde_json::from_str::<PingMessage>(&msg.raw).ok() {
                 match message {
-                    PingMessage::Ping => debug!("Received Ping"),
+                    PingMessage::Ping => info!("Received Ping"),
                     PingMessage::Pong => {
                         warn!("Job Dispatcher should not receive Pong");
                         return Ok(());
@@ -137,6 +138,7 @@ impl DispatcherHandler {
             }
         }
 
+        // TODO: instead of checking in every tick, we can use an event-driven or a timestamp-based approach to check the instance status less frequently
         for (instance_id, (finished, context, id)) in self.instances_status.iter_mut() {
             if !*finished {
                 let ready = tokio::task::block_in_place(|| {
@@ -157,7 +159,7 @@ impl DispatcherHandler {
                     }
                     self.storage.delete_instance_status(instance_id)?;
                 } else {
-                    debug!("Instance {} is still not ready", instance_id);
+                    info!("Instance {} is still not ready", instance_id);
                 }
             }
         }
@@ -194,23 +196,6 @@ pub fn dispatcher_loop(
     }
 
     Ok(())
-}
-
-fn load_config(config_path: String) -> Vec<String> {
-    let file = std::fs::File::open(config_path);
-    let reader = std::io::BufReader::new(file.unwrap());
-    let config: serde_json::Value =
-        serde_json::from_reader(reader).expect("Could not parse config file");
-    if let Some(instance_ids) = config.get("instance_ids") {
-        instance_ids
-            .as_array()
-            .expect("instance_ids should be an array")
-            .iter()
-            .filter_map(|id| id.as_str().map(String::from))
-            .collect()
-    } else {
-        panic!("No instance_ids found in the config file");
-    }
 }
 
 async fn create_service() -> Ec2Client {
@@ -258,7 +243,7 @@ async fn is_instance_ready(instance_id: &str, ec2: &Ec2Client) -> Result<bool, D
                     Ok(false)
                 }
                 _ => {
-                    debug!("Instance {} is in state {:?}", instance_id, name);
+                    info!("Instance {} is in state {:?}", instance_id, name);
                     Ok(false)
                 }
             },

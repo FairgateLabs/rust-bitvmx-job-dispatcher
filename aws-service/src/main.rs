@@ -110,7 +110,7 @@ fn main() -> Result<(), anyhow::Error> {
         running,
         rt,
         storage,
-        "./config.json".to_string(),
+        "./config.yaml".to_string(),
     )
     .map_err(|e| {
         error!("Dispatcher loop error: {}", e);
