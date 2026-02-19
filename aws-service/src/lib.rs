@@ -141,11 +141,7 @@ impl DispatcherHandler {
         // TODO: instead of checking in every tick, we can use an event-driven or a timestamp-based approach to check the instance status less frequently
         for (instance_id, (finished, context, id)) in self.instances_status.iter_mut() {
             if !*finished {
-                let ready = tokio::task::block_in_place(|| {
-                    self.handle
-                        .block_on(is_instance_ready(&instance_id, &self.ec2))
-                        .unwrap_or(false)
-                });
+                let ready = self.handle.block_on(is_instance_ready(&instance_id, &self.ec2)).unwrap_or(false);
                 if ready {
                     *finished = true;
                     let job_id = &context.as_ref().unwrap().job_id;

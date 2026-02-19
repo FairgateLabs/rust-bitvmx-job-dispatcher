@@ -87,9 +87,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let config: BrokerConfig =
         BrokerConfig::new(args.port, Some(IpAddr::from(ip)), args.broker_pubk_hash);
-    // let channel =
-    //     DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt.clone())?;
-    let channel = DualChannel::new(&config, cert, Some(my_id), allow_list).unwrap();
+    let channel = DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt.clone())?;
 
     let check_interval = std::time::Duration::from_secs(1);
 
