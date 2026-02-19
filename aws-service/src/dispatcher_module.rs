@@ -50,12 +50,12 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-    pub fn new(config_path: String) -> Self {
-        let config = AppConfig::load(&config_path).unwrap();
-        Self {
+    pub fn new(config_path: String) -> Result<Self, DispatcherError> {
+        let config = AppConfig::load(Some(config_path))?;
+        Ok(Self {
             jobs: HashMap::new(),
             config,
-        }
+        })
     }
 
     pub fn get_instance_ids(&self) -> Vec<String> {
@@ -513,7 +513,7 @@ mod tests {
         init_trace().unwrap();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone());
+        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
 
         let (ec2_client, config) = dispatcher.create_service().await;
 

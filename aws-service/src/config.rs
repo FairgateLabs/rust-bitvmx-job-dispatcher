@@ -1,6 +1,6 @@
 use serde::Deserialize;
-use std::env;
-use std::fs;
+use tracing::info;
+use crate::dispatcher_error::DispatcherError;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
@@ -34,23 +34,16 @@ pub struct PathsConfig {
 }
 
 impl AppConfig {
-    pub fn load(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let raw = fs::read_to_string(path)?;
-        let mut config: AppConfig = serde_yaml::from_str(&raw)?;
-
-        // Resolve environment placeholders
-        config.aws.access_key_id = resolve_env(&config.aws.access_key_id)?;
-        config.aws.secret_access_key = resolve_env(&config.aws.secret_access_key)?;
-
-        Ok(config)
+    pub fn load(path: Option<String>) -> Result<Self, DispatcherError> {
+        match path {
+            Some(config) => {
+                info!("Using configuration: {}", config);
+                Ok(bitvmx_settings::settings::load_config_file::<AppConfig>(
+                    Some(config),
+                )?)
+            }
+            None => Ok(bitvmx_settings::settings::load::<AppConfig>()?),
+        }
     }
 }
 
-fn resolve_env(value: &str) -> Result<String, Box<dyn std::error::Error>> {
-    if value.starts_with("[env:") && value.ends_with("]") {
-        let var_name = &value[5..value.len() - 1];
-        Ok(env::var(var_name)?)
-    } else {
-        Ok(value.to_string())
-    }
-}

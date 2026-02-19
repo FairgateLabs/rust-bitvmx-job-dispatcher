@@ -52,7 +52,7 @@ impl DispatcherHandler {
         storage: Rc<Storage>,
         ec2: Ec2Client,
     ) -> Result<Self, DispatcherError> {
-        let dispatcher = Dispatcher::new(config_path.clone());
+        let dispatcher = Dispatcher::new(config_path.clone())?;
         let instance_ids = dispatcher.get_instance_ids();
         if instance_ids.is_empty() {
             return Err(DispatcherError::NoInstanceIds);

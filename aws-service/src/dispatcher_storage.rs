@@ -133,7 +133,7 @@ mod tests {
             "command_file_path".to_string(),
         );
         let config_yaml = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_yaml.clone());
+        let dispatcher = Dispatcher::new(config_yaml.clone())?;
         let instance_id = &dispatcher.get_instance_ids()[0]; // TODO: use all instance ids
 
         dispatcher_storage.save_pending_job(&identifier_1, &context_1)?;

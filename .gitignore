@@ -3,7 +3,7 @@ Cargo.lock
 output.json
 snark-seal.json
 stark-proof.bin
-/temp-runs
+*/temp-runs
 /runs
 /logs
 .DS_Store

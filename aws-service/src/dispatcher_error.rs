@@ -52,4 +52,7 @@ pub enum DispatcherError {
 
     #[error("Pending Job not found")]
     PendingJobNotFound,
+
+    #[error("Failed to load configuration {0}")]
+    ConfigLoadFailed(#[from] bitvmx_settings::errors::ConfigError),
 }

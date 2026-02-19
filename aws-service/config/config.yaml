@@ -1,7 +1,7 @@
 aws:
   region: us-east-2
-  access_key_id: "[env:AWS_ACCESS_KEY_ID]"
-  secret_access_key: "[env:AWS_SECRET_ACCESS_KEY]"
+  access_key_id: "(env:AWS_ACCESS_KEY_ID)"
+  secret_access_key: "(env:AWS_SECRET_ACCESS_KEY)"
 
 ec2:
   instance_id: "i-0c5516de591c523c3"
