@@ -140,21 +140,20 @@ impl Dispatcher {
     }
 
     pub fn process_result(&mut self, id: &str) -> Option<String> {
-        if let Some(command_file_path) = self.jobs.remove(id) {
-            let command_file = format!("{}/output.json", command_file_path);
-            match fs::read_to_string(&command_file) {
+        if let Some(output_file_path) = self.jobs.remove(id) {
+            match fs::read_to_string(&output_file_path) {
                 Ok(buf) => {
                     info!("Worker output from file: {}", buf);
                     match Self::extract_structured_json("ProveResult", &buf) {
                         Some(result) => return Some(result),
                         None => {
-                            error!("Unexpected result format in command file {}", command_file);
+                            error!("Unexpected result format in output file {}", output_file_path);
                             return None;
                         }
                     }
                 }
                 Err(e) => {
-                    error!("Error reading command file {}: {:?}", command_file, e);
+                    error!("Error reading output file {}: {:?}", output_file_path, e);
                     return None;
                 }
             }
@@ -541,7 +540,7 @@ mod tests {
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
-        
+
         let (ec2_client, config) = dispatcher.create_service().await;
 
         let ssm_client = SsmClient::new(&config);
