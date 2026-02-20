@@ -17,7 +17,7 @@ use std::{
 };
 use storage_backend::storage::Storage;
 use tokio::runtime::{Handle, Runtime};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     dispatcher_error::DispatcherError,
@@ -43,7 +43,7 @@ pub struct DispatcherHandler {
 
 impl DispatcherHandler {
     pub fn new(
-        channel: DualChannel,
+        message_channel: DualChannel,
         config_path: String,
         handle: Handle,
         storage: Rc<Storage>,
@@ -57,13 +57,26 @@ impl DispatcherHandler {
         let mut instances_status = HashMap::new();
         let (restored_pending_jobs, restored_instances_status) = storage.restore_data()?;
         for instance_id in instance_ids {
-            if let Some(instance_status) = restored_instances_status.get(&instance_id) {
-                //TODO: restart petition (Only if not output in s3)
+            if let Some(instance_status) = restored_instances_status.get(&instance_id).cloned() {
+                //TODO: Check with Martin if not restarting if all output in s3
+                let (tx, rx) = channel::<()>();
+                let value = instance_id.clone();
+                let dispatcher_clone = dispatcher.clone();
+                let restored_context = instance_status.1.clone().unwrap();
+                handle.spawn(async move {
+                    if let Err(e) = dispatcher_clone
+                        .restart_petition(&value, restored_context, tx)
+                        .await
+                    {
+                        error!("Error processing {}: {:?}", value, e);
+                    }
+                });
+
                 let instance_status = (
                     instance_status.0,
                     instance_status.1.clone(),
                     instance_status.2.clone(),
-                    None,
+                    Some(rx),
                 );
                 instances_status.insert(instance_id.clone(), instance_status);
             } else {
@@ -72,7 +85,7 @@ impl DispatcherHandler {
         }
 
         Ok(Self {
-            channel,
+            channel: message_channel,
             instances_status,
             pending_jobs: restored_pending_jobs,
             dispatcher,
@@ -156,7 +169,7 @@ impl DispatcherHandler {
                     }
                     self.storage.delete_instance_status(instance_id)?;
                 } else {
-                    info!("Instance {} is still not ready", instance_id);
+                    debug!("Instance {} is still not ready", instance_id);
                 }
             }
         }

@@ -43,7 +43,7 @@ pub mod prover {
             job_id: "uid_job".to_string(),
             job_type: ProverJobType::Prove(
                 50_u32.to_be_bytes().to_vec(),
-                "./a.elf".to_string(),
+                "target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin".to_string(),
                 "./output.json".to_string(),
             ),
         })?;

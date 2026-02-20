@@ -100,8 +100,6 @@ impl DispatcherStorage {
 mod tests {
     use std::{env, path::PathBuf};
 
-    use crate::dispatcher_module::Dispatcher;
-
     use super::*;
     use rand::{RngCore, rng};
     use storage_backend::storage_config::StorageConfig;
@@ -134,9 +132,7 @@ mod tests {
             vec![("test.bin".to_string(), vec![0, 1, 2, 3])],
             HashMap::from([("test.bin".to_string(), "test.bin".to_string())]),
         );
-        let config_yaml = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_yaml.clone())?;
-        let instance_id = &dispatcher.get_instance_ids()[0]; // TODO: use all instance ids
+        let instance_id = "i-0123456789abcdef0".to_string();
 
         dispatcher_storage.save_pending_job(&identifier_1, &context_1)?;
         dispatcher_storage.save_pending_job(&identifier_2, &context_2)?;
