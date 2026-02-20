@@ -1,14 +1,13 @@
 aws:
   region: us-east-2
-  access_key_id: "(env:AWS_ACCESS_KEY_ID)"
-  secret_access_key: "(env:AWS_SECRET_ACCESS_KEY)"
+  access_key_id: (env:AWS_ACCESS_KEY_ID)
+  secret_access_key: (env:AWS_SECRET_ACCESS_KEY)
 
 ec2:
-  instance_id: "i-0c5516de591c523c3"
+  instance_id: "i-01e9e5bdfac733348"
 
 s3:
   bucket: "prueba-zkp2" #TODO: rename
 
 paths:
-  elf_path: "/home/ubuntu/rust-bitvmx-zk-proof/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin"
-  host_bin: "/home/ubuntu/rust-bitvmx-zk-proof/target/release/host"
+  repository_path: "/home/ubuntu/rust-bitvmx-zk-proof"

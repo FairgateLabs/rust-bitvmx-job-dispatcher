@@ -29,8 +29,7 @@ pub struct S3Config {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PathsConfig {
-    pub elf_path: String,
-    pub host_bin: String,
+    pub repository_path: String,
 }
 
 impl AppConfig {

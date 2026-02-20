@@ -11,34 +11,36 @@ use aws_sdk_ssm::{
     types::{CommandInvocationStatus, PingStatus},
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, time::Duration};
+use std::{collections::HashMap, fs, sync::mpsc::Sender, time::Duration};
 use tokio::{
-    fs::File,
-    io::copy,
-    time::{Instant, sleep},
+    fs::File, io::copy, time::{Instant, sleep}
 };
 use tracing::{error, info};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct JobContext {
     pub job_id: String,
-    pub input_value: Vec<u8>,
-    pub elf: String,
-    pub command_file_path: String,
+    pub job_name: String,
+    pub job_args: Vec<String>,
+    pub upload_bucket: Vec<(String, Vec<u8>)>,
+    pub download_bucket: HashMap<String, String>,
 }
 
 impl JobContext {
     pub fn new(
         job_id: String,
-        input_value: Vec<u8>,
-        elf: String,
-        command_file_path: String,
+        job_name: String,
+        job_args: Vec<String>,
+        upload_bucket: Vec<(String, Vec<u8>)>,
+        download_bucket: HashMap<String, String>,
+
     ) -> Self {
         Self {
             job_id,
-            input_value,
-            elf,
-            command_file_path: command_file_path,
+            job_name,
+            job_args,
+            upload_bucket,
+            download_bucket,
         }
     }
 }
@@ -75,13 +77,60 @@ impl Dispatcher {
         }
 
         let job_context = match msg.job_type {
-            ProverJobType::Prove(input_value, elf, command_file_path) => {
-                JobContext::new(msg.job_id.clone(), input_value, elf, command_file_path)
+            ProverJobType::Prove(input_value, _elf, output_file_path) => {
+                let elf = format!("{}/target/riscv-guest/methods/bitvmx/riscv32im-risc0-zkvm-elf/release/bitvmx.bin", self.config.paths.repository_path); //TODO: Match different types of ELF binaries
+                let host_bin = format!("{}/target/release/host", self.config.paths.repository_path);
+
+                let output_file = format!(
+                    "s3://{}/output_{}.json",
+                    self.config.s3.bucket, msg.job_id
+                );
+                let input_file = format!(
+                    "s3://{}/input_{}.bin",
+                    self.config.s3.bucket, msg.job_id
+                );
+
+                let job_args = vec![
+                    format!("aws s3 cp {input_file} /tmp/input.bin"),
+                    format!(
+                    "{host_bin} prove-stark \
+                    --input /tmp/input.bin \
+                    --elf {elf} \
+                    --output /tmp/stark_proof.bin \
+                    --json /tmp/output.json"
+                    ),
+                    format!(
+                    "{host_bin} prove-snark \
+                    --input /tmp/stark_proof.bin \
+                    --json /tmp/output.json \
+                    --json-input /tmp/output.json \
+                    > /tmp/upload.log 2>&1"
+                    ),
+                    format!("aws s3 cp /tmp/output.json {output_file} > /tmp/upload.log 2>&1"),
+                ];
+
+                JobContext::new(
+                    msg.job_id.clone(),
+                    "Prove".to_string(),
+                    job_args,
+                    vec![
+                        (format!("input_{}.bin", msg.job_id), input_value),
+                    ],
+                    HashMap::from([(format!("output_{}.json", msg.job_id), output_file_path)]),
+                )
+            }
+        };
+
+        let output_file_path = match job_context.download_bucket.get(&format!("output_{}.json", msg.job_id)) {
+            Some(path) => path.clone(),
+            None => {
+                error!("Output path not found for job ID: {}", msg.job_id);
+                return Err(DispatcherError::OutputPathNotFound);
             }
         };
 
         self.jobs
-            .insert(msg.job_id.clone(), job_context.command_file_path.clone());
+            .insert(msg.job_id.clone(), output_file_path);
 
         Ok(job_context)
     }
@@ -126,6 +175,7 @@ impl Dispatcher {
         &self,
         instance_id: &str,
         context: JobContext,
+        tx: Sender<()>,
     ) -> Result<(), DispatcherError> {
         info!(
             "Managing petition for job ID: {} on instance ID: {}",
@@ -167,6 +217,7 @@ impl Dispatcher {
         self.stop_instance(&ec2_client, instance_id).await?;
         info!("Instance stopped");
 
+        tx.send(())?;
         Ok(())
     }
 
@@ -175,19 +226,20 @@ impl Dispatcher {
         client: &S3Client,
         context: &JobContext,
     ) -> Result<(), DispatcherError> {
-        let bucket = &self.config.s3.bucket;
-        let key = format!("input_{}.bin", context.job_id);
+        for (file_name, data) in &context.upload_bucket {
+            let bucket = &self.config.s3.bucket;
 
-        client
-            .put_object()
-            .bucket(bucket)
-            .key(&key)
-            .body(context.input_value.clone().into())
-            .send()
-            .await
-            .map_err(|e| DispatcherError::S3Error(e.into()))?;
+            client
+                .put_object()
+                .bucket(bucket)
+                .key(file_name)
+                .body(data.clone().into())
+                .send()
+                .await
+                .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        info!("File uploaded to S3: s3://{}/{}", bucket, key);
+            info!("File uploaded to S3: s3://{}/{}", bucket, file_name);
+        }
 
         Ok(())
     }
@@ -354,40 +406,12 @@ impl Dispatcher {
         instance_id: &str,
         context: &JobContext,
     ) -> Result<String, DispatcherError> {
-        let elf = &self.config.paths.elf_path;
-        let host_bin = &self.config.paths.host_bin;
-
-        let output_file = format!(
-            "s3://{}/output_{}.json",
-            self.config.s3.bucket, context.job_id
-        );
-        let input_file = format!(
-            "s3://{}/input_{}.bin",
-            self.config.s3.bucket, context.job_id
-        );
-
-        let command_to_send = format!(
-            "aws s3 cp {input_file} /tmp/input.bin && \
-            {host_bin} prove-stark \
-            --input /tmp/input.bin \
-            --elf {elf} \
-            --output /tmp/stark_proof.bin \
-            --json /tmp/output.json \
-            && {host_bin} \
-            prove-snark \
-            --input /tmp/stark_proof.bin \
-            --json /tmp/output.json \
-            --json-input /tmp/output.json \
-            > /tmp/upload.log 2>&1 \
-            && aws s3 cp /tmp/output.json {output_file} > /tmp/upload.log 2>&1"
-        );
 
         let command = client
             .send_command()
             .instance_ids(instance_id)
             .document_name("AWS-RunShellScript")
-            .comment("Create file and upload to S3")
-            .parameters("commands", vec![command_to_send.to_string()])
+            .parameters("commands", context.job_args.clone())
             .send()
             .await
             .map_err(|e| DispatcherError::SsmError(e.into()))?;
@@ -455,19 +479,22 @@ impl Dispatcher {
         client: &S3Client,
         context: &JobContext,
     ) -> Result<(), DispatcherError> {
-        let bucket = &self.config.s3.bucket;
-        let key = format!("output_{}.json", context.job_id);
-        let resp = client
-            .get_object()
-            .bucket(bucket)
-            .key(key)
-            .send()
+        for (file_name, file_local_path) in &context.download_bucket {
+            let bucket = &self.config.s3.bucket;
+            let resp = client
+                .get_object()
+                .bucket(bucket)
+                .key(file_name)
+                .send()
             .await
             .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
-        let mut file = File::create(format!("{}/output.json", context.command_file_path)).await?;
-        let mut body = resp.body.into_async_read();
-        copy(&mut body, &mut file).await?;
+            let mut file = File::create(file_local_path).await?;
+            let mut body = resp.body.into_async_read();
+            copy(&mut body, &mut file).await?;
+
+            info!("File downloaded from S3: {}", file_local_path);
+        }
 
         Ok(())
     }
@@ -514,10 +541,11 @@ mod tests {
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
+        println!("Dispatcher created with config: {:?}", dispatcher.config);
 
         let (ec2_client, config) = dispatcher.create_service().await;
 
-        let _ssm_client = SsmClient::new(&config);
+        let ssm_client = SsmClient::new(&config);
         let s3_client = S3Client::new(&config);
 
         let instance_id = &dispatcher.get_instance_ids()[0]; // TODO: use all instance ids
@@ -529,13 +557,32 @@ mod tests {
             .unwrap();
         info!("Instance started");
 
+        dispatcher
+            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, instance_id)
+            .await
+            .unwrap();
+
         let context = JobContext::new(
             "test_job".to_string(),
-            vec![1, 2, 3, 4],
-            "elf".to_string(),
-            "command_file_path".to_string(),
+            "Prove".to_string(),
+            vec!["echo 'Hello World' > /tmp/hello.txt".to_string()],
+            vec![("test.bin".to_string(), vec![0, 1, 2, 3])],
+            HashMap::from([("test.bin".to_string(), "test.bin".to_string())]),
         );
         dispatcher.upload_file(&s3_client, &context).await.unwrap();
+        info!("File uploaded successfully");
+
+        let command_id = dispatcher.send_command(&ssm_client, instance_id, &context).await.unwrap();
+        dispatcher
+            .wait_for_command_completion(&ssm_client, instance_id, &command_id)
+            .await
+            .unwrap();
+        info!("Command completed successfully");
+
+        dispatcher.download_file(&s3_client, &context).await.unwrap();
+        assert!(std::path::Path::new("test.bin").exists(), "File was not downloaded");
+        info!("File downloaded successfully");
+        fs::remove_file("test.bin").unwrap();
 
         dispatcher
             .stop_instance(&ec2_client, instance_id)

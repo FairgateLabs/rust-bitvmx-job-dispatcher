@@ -55,4 +55,10 @@ pub enum DispatcherError {
 
     #[error("Failed to load configuration {0}")]
     ConfigLoadFailed(#[from] bitvmx_settings::errors::ConfigError),
+
+    #[error("Output path not found")]
+    OutputPathNotFound,
+
+    #[error("Sender error {0}")]
+    SenderError(#[from] std::sync::mpsc::SendError<()>),
 }

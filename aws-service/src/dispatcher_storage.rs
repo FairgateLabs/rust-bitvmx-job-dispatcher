@@ -122,15 +122,17 @@ mod tests {
         let identifier_2 = Identifier::new("test2".to_string(), 2);
         let context_1 = JobContext::new(
             "test_1".to_string(),
-            50_u32.to_be_bytes().to_vec(),
-            "elf".to_string(),
-            "command_file_path".to_string(),
+            "Test".to_string(),
+            vec!["echo test > /tmp/test.txt".to_string()],
+            vec![("test.bin".to_string(), vec![0, 1, 2, 3])],
+            HashMap::from([("test.bin".to_string(), "test.bin".to_string())]),
         );
         let context_2 = JobContext::new(
             "test_2".to_string(),
-            50_u32.to_be_bytes().to_vec(),
-            "elf".to_string(),
-            "command_file_path".to_string(),
+            "Test".to_string(),
+            vec!["echo test > /tmp/test.txt".to_string()],
+            vec![("test.bin".to_string(), vec![0, 1, 2, 3])],
+            HashMap::from([("test.bin".to_string(), "test.bin".to_string())]),
         );
         let config_yaml = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_yaml.clone())?;
