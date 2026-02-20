@@ -541,8 +541,7 @@ mod tests {
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
-        println!("Dispatcher created with config: {:?}", dispatcher.config);
-
+        
         let (ec2_client, config) = dispatcher.create_service().await;
 
         let ssm_client = SsmClient::new(&config);

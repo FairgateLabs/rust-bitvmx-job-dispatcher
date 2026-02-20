@@ -44,7 +44,7 @@ pub mod prover {
             job_type: ProverJobType::Prove(
                 50_u32.to_be_bytes().to_vec(),
                 "./a.elf".to_string(),
-                ".".to_string(),
+                "./output.json".to_string(),
             ),
         })?;
         channel.send(&emulator_id, msg)?;
