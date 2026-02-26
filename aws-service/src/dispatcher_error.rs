@@ -61,4 +61,7 @@ pub enum DispatcherError {
 
     #[error("Sender error {0}")]
     SenderError(#[from] std::sync::mpsc::SendError<()>),
+
+    #[error("The file uploaded to S3 is corrupted")]
+    CorruptedS3File,
 }

@@ -4,7 +4,9 @@ aws:
   secret_access_key: (env:AWS_SECRET_ACCESS_KEY)
 
 ec2:
-  instance_id: "i-01e9e5bdfac733348"
+  image_id: "ami-0c4d37e988d482206"
+  instance_profile_arn: "arn:aws:iam::280362093965:instance-profile/ZKP"
+  max_running_instances: 3
 
 s3:
   bucket: "prueba-zkp2" #TODO: rename

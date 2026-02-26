@@ -10,8 +10,9 @@ use std::{
     collections::HashMap,
     rc::Rc,
     sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering}, mpsc::{Receiver, channel},
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{Receiver, channel},
     },
     time::Duration,
 };
@@ -34,7 +35,9 @@ pub fn process_msg(dispatcher: &mut Dispatcher, msg: &str) -> Option<JobContext>
 
 pub struct DispatcherHandler {
     channel: DualChannel,
-    instances_status: HashMap<String, (bool, Option<JobContext>, Option<Identifier>, Option<Receiver<()>>)>,
+    instances_status:
+        HashMap<String, (Option<JobContext>, Option<Identifier>, Option<Receiver<()>>)>,
+    max_running_instances: usize,
     pending_jobs: Vec<(Identifier, JobContext)>,
     dispatcher: Dispatcher,
     storage: DispatcherStorage,
@@ -47,40 +50,53 @@ impl DispatcherHandler {
         config_path: String,
         handle: Handle,
         storage: Rc<Storage>,
+        rt: &MutexGuard<'_, Runtime>,
     ) -> Result<Self, DispatcherError> {
-        let dispatcher = Dispatcher::new(config_path.clone())?;
-        let instance_ids = dispatcher.get_instance_ids();
-        if instance_ids.is_empty() {
-            return Err(DispatcherError::NoInstanceIds);
-        }
+        let mut dispatcher = Dispatcher::new(config_path.clone())?;
         let storage = DispatcherStorage::new(storage);
+        let max_running_instances = dispatcher.obtain_max_running_instances()?;
         let mut instances_status = HashMap::new();
         let (restored_pending_jobs, restored_instances_status) = storage.restore_data()?;
-        for instance_id in instance_ids {
-            if let Some(instance_status) = restored_instances_status.get(&instance_id).cloned() {
-                //TODO: Check with Martin if not restarting if all output in s3
+        for (instance_id, instance_status) in restored_instances_status {
+            let context = instance_status.0.clone().unwrap();
+            let id = instance_status.1.clone().unwrap();
+            if rt.block_on(dispatcher.check_job_finished(&instance_id, &context))? {
+                let job_id = &context.job_id;
+                if let Some(result) = dispatcher.process_result(&job_id) {
+                    if let Err(e) = message_channel
+                        .send(&id, ResultMessage::new(job_id.clone(), result).to_string())
+                    {
+                        error!("Failed to send result: {}", e);
+                    }
+                }
+                storage.delete_instance_status(&instance_id)?;
+            } else {
+                let new_instance_id = handle.block_on(dispatcher.obtain_new_instance())?;
                 let (tx, rx) = channel::<()>();
-                let value = instance_id.clone();
+                let old_instance_id = instance_id.clone();
+                let new_instance_id_cloned = new_instance_id.clone();
                 let dispatcher_clone = dispatcher.clone();
-                let restored_context = instance_status.1.clone().unwrap();
+                let restored_context = instance_status.0.clone().unwrap();
                 handle.spawn(async move {
                     if let Err(e) = dispatcher_clone
-                        .restart_petition(&value, restored_context, tx)
+                        .restart_petition(
+                            &old_instance_id,
+                            &new_instance_id_cloned,
+                            restored_context,
+                            tx,
+                        )
                         .await
                     {
-                        error!("Error processing {}: {:?}", value, e);
+                        error!("Error processing {}: {:?}", old_instance_id, e);
                     }
                 });
-
+                storage.replace_instance_id(&instance_id, &new_instance_id)?;
                 let instance_status = (
-                    instance_status.0,
+                    instance_status.0.clone(),
                     instance_status.1.clone(),
-                    instance_status.2.clone(),
                     Some(rx),
                 );
-                instances_status.insert(instance_id.clone(), instance_status);
-            } else {
-                instances_status.insert(instance_id.clone(), (true, None, None, None));
+                instances_status.insert(new_instance_id.clone(), instance_status);
             }
         }
 
@@ -88,6 +104,7 @@ impl DispatcherHandler {
             channel: message_channel,
             instances_status,
             pending_jobs: restored_pending_jobs,
+            max_running_instances,
             dispatcher,
             handle,
             storage,
@@ -120,57 +137,46 @@ impl DispatcherHandler {
         }
 
         if !self.pending_jobs.is_empty() {
-            let ready_instances_ids: Vec<String> = self
-                .instances_status
-                .iter()
-                .filter_map(|(id, (ready, _, _, _))| if *ready { Some(id.clone()) } else { None })
-                .collect();
+            let running_instances = self.instances_status.iter().count();
+            info!("Running instance count: {:?}", running_instances);
 
-            info!("Ready instance IDs: {:?}", ready_instances_ids);
-
-            if !ready_instances_ids.is_empty() {
-                for ready_instance_id in ready_instances_ids {
-                    if let Some((id, context)) = self.pending_jobs.pop() {
-                        self.storage
-                            .update_instance_status(&ready_instance_id, &id)?;
-                        let (tx, rx) = channel::<()>();
-                        self.instances_status.insert(
-                            ready_instance_id.clone(),
-                            (false, Some(context.clone()), Some(id), Some(rx)),
-                        );
-                        let dispatcher = self.dispatcher.clone();
-                        self.handle.spawn(async move {
-                            if let Err(e) = dispatcher
-                                .manage_petition(&ready_instance_id, context, tx)
-                                .await
-                            {
-                                error!("Error processing {}: {:?}", ready_instance_id, e);
-                            }
-                        });
-                    }
+            if running_instances >= self.max_running_instances {
+                if let Some((id, context)) = self.pending_jobs.pop() {
+                    let instance_id = self
+                        .handle
+                        .block_on(self.dispatcher.obtain_new_instance())?;
+                    self.storage.update_instance_status(&instance_id, &id)?;
+                    let (tx, rx) = channel::<()>();
+                    self.instances_status.insert(
+                        instance_id.clone(),
+                        (Some(context.clone()), Some(id), Some(rx)),
+                    );
+                    let dispatcher = self.dispatcher.clone();
+                    self.handle.spawn(async move {
+                        if let Err(e) = dispatcher.manage_petition(&instance_id, context, tx).await
+                        {
+                            error!("Error processing {}: {:?}", instance_id, e);
+                        }
+                    });
                 }
             }
         }
 
-        // TODO: instead of checking in every tick, we can use an event-driven or a timestamp-based approach to check the instance status less frequently
-        for (instance_id, (finished, context, id, rx)) in self.instances_status.iter_mut() {
-            if !*finished {
-                let ready = rx.as_ref().unwrap().try_recv().is_ok();
-                if ready {
-                    *finished = true;
-                    let job_id = &context.as_ref().unwrap().job_id;
-                    if let Some(result) = self.dispatcher.process_result(&job_id) {
-                        if let Err(e) = self.channel.send(
-                            &id.clone().unwrap(),
-                            ResultMessage::new(job_id.clone(), result).to_string(),
-                        ) {
-                            error!("Failed to send result: {}", e);
-                        }
+        for (instance_id, (context, id, rx)) in self.instances_status.iter_mut() {
+            let ready = rx.as_ref().unwrap().try_recv().is_ok();
+            if ready {
+                let job_id = &context.as_ref().unwrap().job_id;
+                if let Some(result) = self.dispatcher.process_result(&job_id) {
+                    if let Err(e) = self.channel.send(
+                        &id.clone().unwrap(),
+                        ResultMessage::new(job_id.clone(), result).to_string(),
+                    ) {
+                        error!("Failed to send result: {}", e);
                     }
-                    self.storage.delete_instance_status(instance_id)?;
-                } else {
-                    debug!("Instance {} is still not ready", instance_id);
                 }
+                self.storage.delete_instance_status(instance_id)?;
+            } else {
+                debug!("Instance {} is still not ready", instance_id);
             }
         }
         Ok(())
@@ -193,7 +199,7 @@ pub fn dispatcher_loop(
 
     let handle = runtime.handle().clone();
     let mut dispatcher_handler =
-        DispatcherHandler::new(channel, config_path, handle, storage)?;
+        DispatcherHandler::new(channel, config_path, handle, storage, &runtime)?; //TODO: Make configurable
 
     drop(runtime);
     while running.load(Ordering::SeqCst) {

@@ -1,10 +1,10 @@
 use std::{process::Child, rc::Rc};
 
 use bitvmx_broker::identification::identifier::Identifier;
+use dispatcher_utils::Msg;
 use serde::de::DeserializeOwned;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::info;
-use dispatcher_utils::Msg;
 
 use crate::{
     dispatcher_error::DispatcherError,

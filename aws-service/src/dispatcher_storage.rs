@@ -2,6 +2,7 @@ use crate::{dispatcher_error::DispatcherError, dispatcher_module::JobContext};
 use bitvmx_broker::identification::identifier::Identifier;
 use std::{collections::HashMap, rc::Rc};
 use storage_backend::storage::{KeyValueStore, Storage};
+use tracing::error;
 
 const PENDING_JOB_KEY: &str = "pending_aws_dispatcher_job_";
 const INSTANCE_STATUS_KEY: &str = "aws_dispatcher_instance_status_";
@@ -20,7 +21,7 @@ impl DispatcherStorage {
     ) -> Result<
         (
             Vec<(Identifier, JobContext)>,
-            HashMap<String, (bool, Option<JobContext>, Option<Identifier>)>,
+            HashMap<String, (Option<JobContext>, Option<Identifier>)>,
         ),
         DispatcherError,
     > {
@@ -41,7 +42,7 @@ impl DispatcherStorage {
             let instance_id = instance_id.last().unwrap();
             instances_status.insert(
                 instance_id.to_string(),
-                (false, Some(job_context), Some(identifier)),
+                (Some(job_context), Some(identifier)),
             );
         }
 
@@ -84,6 +85,30 @@ impl DispatcherStorage {
     pub fn delete_instance_status(&self, instance_id: &str) -> Result<(), DispatcherError> {
         let key = self.instance_status_key(instance_id);
         self.storage.remove(key, None)?;
+        Ok(())
+    }
+
+    pub fn replace_instance_id(
+        &self,
+        old_id: &String,
+        new_id: &String,
+    ) -> Result<(), DispatcherError> {
+        let key_old = self.instance_status_key(&old_id);
+        let key_new = self.instance_status_key(&new_id);
+        let values: Option<(JobContext, Identifier)> = self.storage.get(key_old.clone())?;
+        match values {
+            Some((context, identifier)) => {
+                let transaction_id = self.storage.begin_transaction();
+                self.storage
+                    .set(key_new, (context, identifier), Some(transaction_id))?;
+                self.storage.remove(key_old, Some(transaction_id))?;
+                self.storage.commit_transaction(transaction_id)?;
+            }
+            None => {
+                error!("Pending job with id {} not found", old_id);
+                return Err(DispatcherError::PendingJobNotFound);
+            }
+        }
         Ok(())
     }
 
@@ -132,21 +157,50 @@ mod tests {
             vec![("test.bin".to_string(), vec![0, 1, 2, 3])],
             HashMap::from([("test.bin".to_string(), "test.bin".to_string())]),
         );
-        let instance_id = "i-0123456789abcdef0".to_string();
+        let instance_id_1 = "i-0123456789abcdef0".to_string();
 
         dispatcher_storage.save_pending_job(&identifier_1, &context_1)?;
         dispatcher_storage.save_pending_job(&identifier_2, &context_2)?;
-        dispatcher_storage.update_instance_status(&instance_id, &identifier_1)?;
+        dispatcher_storage.update_instance_status(&instance_id_1, &identifier_1)?;
         let (restored_pending_jobs, restored_instances_status) =
             dispatcher_storage.restore_data()?;
 
         let mut result_hashmap = HashMap::new();
         result_hashmap.insert(
-            instance_id.to_string(),
-            (false, Some(context_1), Some(identifier_1)),
+            instance_id_1.clone(),
+            (Some(context_1.clone()), Some(identifier_1.clone())),
         );
         assert_eq!(restored_pending_jobs, vec![(identifier_2, context_2)]);
         assert_eq!(restored_instances_status, result_hashmap);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_replace_instance_id() -> Result<(), DispatcherError> {
+        let config = StorageConfig::new(temp_storage().display().to_string(), None);
+        let dispatcher_storage = DispatcherStorage::new(Rc::new(Storage::new(&config)?));
+
+        let old_id = "i-0123456789abcdef0".to_string();
+        let new_id = "i-0123456789abcdef1".to_string();
+
+        let identifier = Identifier::new("test1".to_string(), 1);
+        let context = JobContext::new(
+            "test_1".to_string(),
+            "Test".to_string(),
+            vec!["echo test > /tmp/test.txt".to_string()],
+            vec![("test.bin".to_string(), vec![0, 1, 2, 3])],
+            HashMap::from([("test.bin".to_string(), "test.bin".to_string())]),
+        );
+
+        dispatcher_storage.save_pending_job(&identifier, &context)?;
+        dispatcher_storage.update_instance_status(&old_id, &identifier)?;
+        dispatcher_storage.replace_instance_id(&old_id, &new_id)?;
+
+        let (_, restored_instances_status) = dispatcher_storage.restore_data()?;
+        let result_hashmap = HashMap::from([(new_id.clone(), (Some(context), Some(identifier)))]);
+        assert_eq!(restored_instances_status, result_hashmap);
+
         Ok(())
     }
 }

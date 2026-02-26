@@ -22,10 +22,10 @@ use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
 use dispatcher_module::{Dispatcher, JobContext};
 use dispatcher_storage::DispatcherStorage;
+use dispatcher_utils::{Msg, PingMessage};
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
 use tracing::{debug, info, warn};
-use dispatcher_utils::{Msg, PingMessage};
 
 use crate::{
     dispatcher_error::DispatcherError,

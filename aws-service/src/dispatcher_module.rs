@@ -3,19 +3,24 @@ use crate::{
     dispatcher_error::DispatcherError,
     dispatcher_job::{DispatcherJob, ProverJobType},
 };
-use aws_config::{BehaviorVersion, Region, SdkConfig};
-use aws_sdk_ec2::{Client as Ec2Client, types::SummaryStatus};
-use aws_sdk_s3::{Client as S3Client, config::Credentials};
+use aws_config::{BehaviorVersion, Region};
+use aws_sdk_ec2::{
+    Client as Ec2Client,
+    types::{IamInstanceProfileSpecification, SummaryStatus},
+};
+use aws_sdk_s3::{Client as S3Client, config::Credentials, types::ChecksumMode};
 use aws_sdk_ssm::{
     Client as SsmClient,
-    types::{CommandInvocationStatus, PingStatus},
+    types::{CommandInvocation, CommandInvocationStatus, PingStatus},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, sync::mpsc::Sender, time::Duration};
 use tokio::{
-    fs::File, io::copy, time::{Instant, sleep}
+    fs::File,
+    io::copy,
+    time::{Instant, sleep},
 };
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct JobContext {
@@ -33,7 +38,6 @@ impl JobContext {
         job_args: Vec<String>,
         upload_bucket: Vec<(String, Vec<u8>)>,
         download_bucket: HashMap<String, String>,
-
     ) -> Self {
         Self {
             job_id,
@@ -60,15 +64,6 @@ impl Dispatcher {
         })
     }
 
-    pub fn get_instance_ids(&self) -> Vec<String> {
-        self.config
-            .ec2
-            .instance_id
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect()
-    }
-
     pub fn process_msg(&mut self, msg: &str) -> Result<JobContext, DispatcherError> {
         let msg: DispatcherJob = serde_json::from_str(msg)?;
         if self.jobs.contains_key(&msg.job_id) {
@@ -81,47 +76,45 @@ impl Dispatcher {
                 let elf = format!("{}/{}", self.config.paths.repository_path, elf);
                 let host_bin = format!("{}/target/release/host", self.config.paths.repository_path);
 
-                let output_file = format!(
-                    "s3://{}/output_{}.json",
-                    self.config.s3.bucket, msg.job_id
-                );
-                let input_file = format!(
-                    "s3://{}/input_{}.bin",
-                    self.config.s3.bucket, msg.job_id
-                );
+                let output_file =
+                    format!("s3://{}/output_{}.json", self.config.s3.bucket, msg.job_id);
+                let input_file = format!("s3://{}/input_{}.bin", self.config.s3.bucket, msg.job_id);
 
                 let job_args = vec![
                     format!("aws s3 cp {input_file} /tmp/input.bin"),
                     format!(
-                    "{host_bin} prove-stark \
+                        "{host_bin} prove-stark \
                     --input /tmp/input.bin \
                     --elf {elf} \
                     --output /tmp/stark_proof.bin \
                     --json /tmp/output.json"
                     ),
                     format!(
-                    "{host_bin} prove-snark \
+                        "{host_bin} prove-snark \
                     --input /tmp/stark_proof.bin \
                     --json /tmp/output.json \
                     --json-input /tmp/output.json \
                     > /tmp/upload.log 2>&1"
                     ),
-                    format!("aws s3 cp /tmp/output.json {output_file} > /tmp/upload.log 2>&1"),
+                    format!(
+                        "aws s3 cp /tmp/output.json {output_file} --checksum-algorithm SHA256 > /tmp/upload.log 2>&1"
+                    ),
                 ];
 
                 JobContext::new(
                     msg.job_id.clone(),
                     "Prove".to_string(),
                     job_args,
-                    vec![
-                        (format!("input_{}.bin", msg.job_id), input_value),
-                    ],
+                    vec![(format!("input_{}.bin", msg.job_id), input_value)],
                     HashMap::from([(format!("output_{}.json", msg.job_id), output_file_path)]),
                 )
             }
         };
 
-        let output_file_path = match job_context.download_bucket.get(&format!("output_{}.json", msg.job_id)) {
+        let output_file_path = match job_context
+            .download_bucket
+            .get(&format!("output_{}.json", msg.job_id))
+        {
             Some(path) => path.clone(),
             None => {
                 error!("Output path not found for job ID: {}", msg.job_id);
@@ -129,25 +122,27 @@ impl Dispatcher {
             }
         };
 
-        self.jobs
-            .insert(msg.job_id.clone(), output_file_path);
+        self.jobs.insert(msg.job_id.clone(), output_file_path);
 
         Ok(job_context)
     }
 
-    pub fn discard_job(&mut self, id: &str) {
-        self.jobs.remove(id);
+    pub fn discard_job(&mut self, id: &str) -> Option<String> {
+        self.jobs.remove(id)
     }
 
     pub fn process_result(&mut self, id: &str) -> Option<String> {
-        if let Some(output_file_path) = self.jobs.remove(id) {
+        if let Some(output_file_path) = self.discard_job(id) {
             match fs::read_to_string(&output_file_path) {
                 Ok(buf) => {
                     info!("Worker output from file: {}", buf);
                     match Self::extract_structured_json("ProveResult", &buf) {
                         Some(result) => return Some(result),
                         None => {
-                            error!("Unexpected result format in output file {}", output_file_path);
+                            error!(
+                                "Unexpected result format in output file {}",
+                                output_file_path
+                            );
                             return None;
                         }
                     }
@@ -170,21 +165,89 @@ impl Dispatcher {
         None
     }
 
-    pub async fn restart_petition(
+    pub async fn obtain_new_instance(&self) -> Result<String, DispatcherError> {
+        let (ec2_client, ..) = self.create_service().await;
+        let run_response = ec2_client
+            .run_instances()
+            .image_id(self.config.ec2.image_id.clone())
+            .instance_type(aws_sdk_ec2::types::InstanceType::T3Xlarge)
+            .iam_instance_profile(
+                IamInstanceProfileSpecification::builder()
+                    .arn(&self.config.ec2.instance_profile_arn)
+                    .build(),
+            )
+            .min_count(1)
+            .max_count(1)
+            .send()
+            .await
+            .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
+
+        let instance_id = run_response
+            .instances()
+            .first()
+            .unwrap()
+            .instance_id()
+            .unwrap();
+
+        Ok(instance_id.to_string())
+    }
+
+    pub async fn check_job_finished(
         &self,
         instance_id: &str,
+        context: &JobContext,
+    ) -> Result<bool, DispatcherError> {
+        let (_, ssm_client, s3_client) = self.create_service().await;
+        if !self
+            .command_runned_finished_succesfully(instance_id, ssm_client)
+            .await?
+        {
+            return Ok(false);
+        }
+        match self.download_file(&s3_client, context).await {
+            Ok(_) => Ok(true),
+            Err(DispatcherError::CorruptedS3File) => {
+                error!(
+                    "Output file for job ID {} is corrupted, treating as not finished",
+                    context.job_id
+                );
+                Ok(false)
+            }
+            Err(e) => match e {
+                DispatcherError::S3Error(aws_sdk_s3::Error::NotFound(_)) => {
+                    info!(
+                        "Output file for job ID {} not found in S3, treating as not finished",
+                        context.job_id
+                    );
+                    return Ok(false);
+                }
+                _ => {
+                    error!(
+                        "Error checking job finished for job ID {}: {:?}",
+                        context.job_id, e
+                    );
+                    return Err(e);
+                }
+            },
+        }
+    }
+
+    pub async fn restart_petition(
+        &self,
+        old_instance_id: &str,
+        new_instance_id: &str,
         context: JobContext,
         tx: Sender<()>,
     ) -> Result<(), DispatcherError> {
         info!(
             "Restarting petition for job ID: {} on instance ID: {}",
-            context.job_id, instance_id
+            context.job_id, old_instance_id
         );
-        let (ec2_client, _) = self.create_service().await;
-        self.stop_instance(&ec2_client, instance_id).await?;
-        self.wait_for_instance_to_be_stopped(&ec2_client, instance_id).await?;
+        let (ec2_client, ..) = self.create_service().await;
+        self.terminate_instance(&ec2_client, old_instance_id)
+            .await?;
         info!("Instance stopped for restart");
-        self.manage_petition(instance_id, context, tx).await
+        self.manage_petition(new_instance_id, context, tx).await
     }
 
     pub async fn manage_petition(
@@ -198,14 +261,7 @@ impl Dispatcher {
             context.job_id, instance_id
         );
 
-        let (ec2_client, config) = self.create_service().await;
-
-        let ssm_client = SsmClient::new(&config);
-        let s3_client = S3Client::new(&config);
-
-        info!("Starting instance {}", instance_id);
-        self.start_instance(&ec2_client, instance_id).await?;
-        info!("Instance started");
+        let (ec2_client, ssm_client, s3_client) = self.create_service().await;
 
         self.upload_file(&s3_client, &context).await?;
 
@@ -230,7 +286,7 @@ impl Dispatcher {
         info!("File downloaded");
 
         info!("Stopping instance {}", instance_id);
-        self.stop_instance(&ec2_client, instance_id).await?;
+        self.terminate_instance(&ec2_client, instance_id).await?;
         info!("Instance stopped");
 
         tx.send(())?;
@@ -288,7 +344,7 @@ impl Dispatcher {
                     error!("Instance {} is in state {}", instance_id, state);
                     return Err(DispatcherError::InstanceNotRunning);
                 }
-                _ => info!("Instance state is {}, waiting for 'running'...", state),
+                _ => debug!("Instance state is {}, waiting for 'running'...", state),
             }
 
             sleep(Duration::from_secs(1)).await;
@@ -331,6 +387,8 @@ impl Dispatcher {
                 if sys_ok && inst_ok {
                     break;
                 }
+
+                debug!("Instance status is not ok yet, waiting...");
             }
 
             sleep(Duration::from_secs(1)).await;
@@ -360,12 +418,12 @@ impl Dispatcher {
                     }
                 }
             }
-
+            debug!("SSM status is not online yet, waiting...");
             sleep(Duration::from_secs(1)).await;
         }
     }
 
-    async fn create_service(&self) -> (Ec2Client, SdkConfig) {
+    async fn create_service(&self) -> (Ec2Client, SsmClient, S3Client) {
         let creds = Credentials::new(
             self.config.aws.access_key_id.clone(),
             self.config.aws.secret_access_key.clone(),
@@ -381,33 +439,19 @@ impl Dispatcher {
             .await;
 
         let client = Ec2Client::new(&config);
+        let ssm_client = SsmClient::new(&config);
+        let s3_client = S3Client::new(&config);
 
-        (client, config)
+        (client, ssm_client, s3_client)
     }
 
-    async fn start_instance(
-        &self,
-        client: &Ec2Client,
-        instance_id: &str,
-    ) -> Result<(), DispatcherError> {
-        //TODO: Start from snapshot
-        client
-            .start_instances()
-            .instance_ids(instance_id)
-            .send()
-            .await
-            .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
-
-        Ok(())
-    }
-
-    async fn stop_instance(
+    async fn terminate_instance(
         &self,
         client: &Ec2Client,
         instance_id: &str,
     ) -> Result<(), DispatcherError> {
         client
-            .stop_instances()
+            .terminate_instances()
             .instance_ids(instance_id)
             .send()
             .await
@@ -422,7 +466,6 @@ impl Dispatcher {
         instance_id: &str,
         context: &JobContext,
     ) -> Result<String, DispatcherError> {
-
         let command = client
             .send_command()
             .instance_ids(instance_id)
@@ -495,6 +538,26 @@ impl Dispatcher {
         client: &S3Client,
         context: &JobContext,
     ) -> Result<(), DispatcherError> {
+        for (file_name, _) in &context.download_bucket {
+            let bucket = &self.config.s3.bucket;
+            let resp = client
+                .head_object()
+                .bucket(bucket)
+                .key(file_name)
+                .checksum_mode(ChecksumMode::Enabled)
+                .send()
+                .await
+                .map_err(|e| DispatcherError::S3Error(e.into()))?;
+
+            if resp.checksum_sha256().is_none() {
+                info!(
+                    "Output file {} does not have a checksum, treating as corrupted",
+                    file_name
+                );
+                return Err(DispatcherError::CorruptedS3File);
+            }
+        }
+
         for (file_name, file_local_path) in &context.download_bucket {
             let bucket = &self.config.s3.bucket;
             let resp = client
@@ -502,8 +565,8 @@ impl Dispatcher {
                 .bucket(bucket)
                 .key(file_name)
                 .send()
-            .await
-            .map_err(|e| DispatcherError::S3Error(e.into()))?;
+                .await
+                .map_err(|e| DispatcherError::S3Error(e.into()))?;
 
             let mut file = File::create(file_local_path).await?;
             let mut body = resp.body.into_async_read();
@@ -515,41 +578,71 @@ impl Dispatcher {
         Ok(())
     }
 
-    async fn wait_for_instance_to_be_stopped(
+    async fn command_runned_finished_succesfully(
         &self,
-        client: &Ec2Client,
         instance_id: &str,
-    ) -> Result<(), DispatcherError> {
-        loop {
-            let resp = client
-                .describe_instances()
-                .instance_ids(instance_id)
-                .send()
-                .await
-                .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
+        ssm_client: SsmClient,
+    ) -> Result<bool, DispatcherError> {
+        let resp = ssm_client
+            .list_command_invocations()
+            .details(true)
+            .send()
+            .await
+            .map_err(|e| DispatcherError::SsmError(e.into()))?;
 
-            let state = resp
-                .reservations()
-                .first()
-                .and_then(|r| r.instances().first())
-                .and_then(|i| i.state())
-                .and_then(|s| s.name())
-                .map(|s| s.as_str())
-                .unwrap_or("unknown");
+        let mut invocations: Vec<&CommandInvocation> = resp
+            .command_invocations()
+            .iter()
+            .filter(|inv| inv.instance_id() == Some(instance_id))
+            .collect();
 
-            match state {
-                "stopped" => break,
-                "shutting-down" | "running" | "terminated" => {
-                    error!("Instance {} is in state {}", instance_id, state);
-                    return Err(DispatcherError::InstanceNotRunning);
+        invocations.sort_by_key(|inv| inv.requested_date_time());
+        invocations.reverse();
+
+        if let Some(last) = invocations.first() {
+            match last.status() {
+                Some(status) => match status {
+                    CommandInvocationStatus::Success => {
+                        info!(
+                            "Last command invocation for instance {} succeeded, checking output file",
+                            instance_id
+                        );
+                        return Ok(true);
+                    }
+                    CommandInvocationStatus::InProgress | CommandInvocationStatus::Pending => {
+                        info!(
+                            "Last command invocation for instance {} is still in progress, treating as not finished",
+                            instance_id
+                        );
+                        return Ok(false);
+                    }
+                    _ => {
+                        error!(
+                            "Last command invocation for instance {} failed with status: {:?}",
+                            instance_id, status
+                        );
+                        return Ok(false);
+                    }
+                },
+                None => {
+                    error!(
+                        "No status received for last command invocation of instance {}",
+                        instance_id
+                    );
+                    return Ok(false);
                 }
-                _ => info!("Instance state is {}, waiting for 'stopped'...", state),
             }
-
-            sleep(Duration::from_secs(1)).await;
+        } else {
+            info!(
+                "No command invocations found for instance {}, treating as not finished",
+                instance_id
+            );
+            return Ok(false);
         }
+    }
 
-        Ok(())
+    pub fn obtain_max_running_instances(&self) -> Result<usize, DispatcherError> {
+        Ok(self.config.ec2.max_running_instances)
     }
 }
 
@@ -595,57 +688,241 @@ mod tests {
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
 
-        let (ec2_client, config) = dispatcher.create_service().await;
+        let (ec2_client, ssm_client, s3_client) = dispatcher.create_service().await;
 
-        let ssm_client = SsmClient::new(&config);
-        let s3_client = S3Client::new(&config);
+        let instance_id = dispatcher.obtain_new_instance().await.unwrap();
 
-        let instance_ids = dispatcher.get_instance_ids();
-
-        for instance_id in instance_ids {
-            info!("Starting instance {}", instance_id);
-            dispatcher
-                .start_instance(&ec2_client, &instance_id)
-                .await
-            .unwrap();
-            info!("Instance started");
-
-            dispatcher
-                .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+        dispatcher
+            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
             .await
             .unwrap();
 
-            let context = JobContext::new(
-                "test_job".to_string(),
-                "Test".to_string(),
-            vec![format!("aws s3 cp s3://{}/test.bin /tmp/test.bin", dispatcher.config.s3.bucket).to_string(), "echo 'Hello World' > /tmp/hello.txt".to_string(), format!("aws s3 cp /tmp/hello.txt s3://{}/hello.txt", dispatcher.config.s3.bucket).to_string()],
-                vec![("test.bin".to_string(), "Hello World".to_string().as_bytes().to_vec())],
-                HashMap::from([("hello.txt".to_string(), "hello.txt".to_string())]),
-            );
-            dispatcher.upload_file(&s3_client, &context).await.unwrap();
-            info!("File uploaded successfully");
+        let context = JobContext::new(
+            "test_job".to_string(),
+            "Test".to_string(),
+            vec![
+                format!(
+                    "aws s3 cp s3://{}/test.bin /tmp/test.bin",
+                    dispatcher.config.s3.bucket
+                )
+                .to_string(),
+                "echo 'Hello World' > /tmp/hello.txt".to_string(),
+                format!(
+                    "aws s3 cp /tmp/hello.txt s3://{}/hello.txt --checksum-algorithm SHA256",
+                    dispatcher.config.s3.bucket
+                )
+                .to_string(),
+            ],
+            vec![(
+                "test.bin".to_string(),
+                "Hello World".to_string().as_bytes().to_vec(),
+            )],
+            HashMap::from([("hello.txt".to_string(), "hello.txt".to_string())]),
+        );
+        dispatcher.upload_file(&s3_client, &context).await.unwrap();
+        info!("File uploaded successfully");
 
-            let command_id = dispatcher.send_command(&ssm_client, &instance_id, &context).await.unwrap();
-            dispatcher
-                .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
+        let command_id = dispatcher
+            .send_command(&ssm_client, &instance_id, &context)
+            .await
+            .unwrap();
+        dispatcher
+            .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
+            .await
+            .unwrap();
+        info!("Command completed successfully");
+
+        dispatcher
+            .download_file(&s3_client, &context)
+            .await
+            .unwrap();
+        assert!(
+            std::path::Path::new("hello.txt").exists(),
+            "File was not downloaded"
+        );
+        assert!(
+            std::fs::read_to_string("hello.txt").unwrap() == "Hello World\n",
+            "File contents are incorrect"
+        );
+        info!("File downloaded successfully");
+        fs::remove_file("hello.txt").unwrap();
+
+        dispatcher
+            .terminate_instance(&ec2_client, &instance_id)
+            .await
+            .unwrap();
+        info!("Instance Terminated");
+    }
+
+    #[tokio::test]
+    async fn test_check_job_finished_for_inexistent_instance_id() {
+        init_trace().unwrap();
+
+        let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
+        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
+
+        let inexistent_instance_id = "i-1234567890abcdef0";
+        let test_context = JobContext::new(
+            "test_job".to_string(),
+            "Test".to_string(),
+            vec![],
+            vec![],
+            HashMap::new(),
+        );
+
+        assert!(
+            !dispatcher
+                .check_job_finished(inexistent_instance_id, &test_context)
                 .await
-                .unwrap();
-            info!("Command completed successfully");
+                .unwrap()
+        );
+    }
 
-            dispatcher.download_file(&s3_client, &context).await.unwrap();
-            assert!(std::path::Path::new("hello.txt").exists(), "File was not downloaded");
-            assert!(std::fs::read_to_string("hello.txt").unwrap() == "Hello World\n", "File contents are incorrect");
-            info!("File downloaded successfully");
-            fs::remove_file("hello.txt").unwrap();
+    #[tokio::test]
+    async fn test_check_job_finished_for_unfinished_job() {
+        init_trace().unwrap();
 
-            dispatcher
-                .stop_instance(&ec2_client, &instance_id)
+        let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
+        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
+        let (ec2_client, ssm_client, _) = dispatcher.create_service().await;
+
+        let test_context_2 = JobContext::new(
+            "test_job".to_string(),
+            "Test".to_string(),
+            vec!["sleep 35s".to_string()],
+            vec![],
+            HashMap::new(),
+        );
+
+        let instance_id = dispatcher.obtain_new_instance().await.unwrap();
+
+        dispatcher
+            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+            .await
+            .unwrap();
+
+        dispatcher
+            .send_command(&ssm_client, &instance_id, &test_context_2)
+            .await
+            .unwrap();
+
+        assert!(
+            !dispatcher
+                .check_job_finished(&instance_id, &test_context_2)
                 .await
-                .unwrap();
-            info!("Instance stopped");
-        }
+                .unwrap()
+        );
 
-        
+        dispatcher
+            .terminate_instance(&ec2_client, &instance_id)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_check_job_finished_for_corrupt_file() {
+        init_trace().unwrap();
+
+        let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
+        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
+        let (ec2_client, ssm_client, _) = dispatcher.create_service().await;
+
+        let instance_id = dispatcher.obtain_new_instance().await.unwrap();
+        let test_context = JobContext::new(
+            "test_job".to_string(),
+            "Test".to_string(),
+            vec![
+                "echo 'Hello World' > /tmp/hello.txt".to_string(),
+                format!(
+                    "aws s3 cp /tmp/hello.txt s3://{}/hello.txt", //This is to simulate a corrupt file, No Checksum = File did not upload correctly
+                    dispatcher.config.s3.bucket
+                )
+                .to_string(),
+            ],
+            vec![],
+            HashMap::from([("hello.txt".to_string(), "hello.txt".to_string())]),
+        );
+
+        dispatcher
+            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+            .await
+            .unwrap();
+
+        let command_id = dispatcher
+            .send_command(&ssm_client, &instance_id, &test_context)
+            .await
+            .unwrap();
+
+        dispatcher
+            .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
+            .await
+            .unwrap();
+
+        assert!(
+            !dispatcher
+                .check_job_finished(&instance_id, &test_context)
+                .await
+                .unwrap()
+        );
+
+        dispatcher
+            .terminate_instance(&ec2_client, &instance_id)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_check_job_finished_successful() {
+        init_trace().unwrap();
+
+        let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
+        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
+        let (ec2_client, ssm_client, _) = dispatcher.create_service().await;
+
+        let instance_id = dispatcher.obtain_new_instance().await.unwrap();
+        let test_context = JobContext::new(
+            "test_job".to_string(),
+            "Test".to_string(),
+            vec![
+                "echo 'Hello World' > /tmp/hello.txt".to_string(),
+                format!(
+                    "aws s3 cp /tmp/hello.txt s3://{}/successful_test.txt --checksum-algorithm SHA256",
+                    dispatcher.config.s3.bucket
+                )
+                .to_string(),
+            ],
+            vec![],
+            HashMap::from([("successful_test.txt".to_string(), "successful_test.txt".to_string())]),
+        );
+
+        dispatcher
+            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+            .await
+            .unwrap();
+
+        let command_id = dispatcher
+            .send_command(&ssm_client, &instance_id, &test_context)
+            .await
+            .unwrap();
+
+        dispatcher
+            .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
+            .await
+            .unwrap();
+
+        assert!(
+            dispatcher
+                .check_job_finished(&instance_id, &test_context)
+                .await
+                .unwrap()
+        );
+
+        fs::remove_file("successful_test.txt").unwrap();
+
+        dispatcher
+            .terminate_instance(&ec2_client, &instance_id)
+            .await
+            .unwrap();
     }
 
     fn init_trace() -> Result<(), anyhow::Error> {

@@ -1,6 +1,6 @@
+use crate::dispatcher_error::DispatcherError;
 use serde::Deserialize;
 use tracing::info;
-use crate::dispatcher_error::DispatcherError;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {
@@ -19,7 +19,9 @@ pub struct AwsConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Ec2Config {
-    pub instance_id: String,
+    pub image_id: String,
+    pub instance_profile_arn: String,
+    pub max_running_instances: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -45,4 +47,3 @@ impl AppConfig {
         }
     }
 }
-

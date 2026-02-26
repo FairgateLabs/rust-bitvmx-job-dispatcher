@@ -16,10 +16,10 @@ pub mod prover {
     use bitvmx_broker::rpc::BrokerConfig;
     use bitvmx_broker::rpc::tls_helper::Cert;
     use bitvmx_broker::{channel::channel::DualChannel, identification::allow_list::AllowList};
+    use dispatcher_utils::PingMessage;
     use std::net::Ipv4Addr;
     use std::{fs, net::IpAddr, thread::sleep, time::Duration};
     use tracing::info;
-    use dispatcher_utils::PingMessage;
 
     pub(crate) fn run_job(port: u16) -> Result<(), anyhow::Error> {
         info!("Starting ping example...");
