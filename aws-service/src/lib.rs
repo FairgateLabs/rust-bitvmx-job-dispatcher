@@ -158,6 +158,11 @@ impl DispatcherHandler {
                         }
                     });
                 }
+            } else {
+                debug!(
+                    "Max running instances reached ({}). Pending jobs will be processed later.",
+                    self.max_running_instances
+                );
             }
         }
 
