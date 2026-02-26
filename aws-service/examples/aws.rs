@@ -50,7 +50,7 @@ pub mod prover {
         })?;
         channel.send(&emulator_id, msg)?;
 
-        for _ in 0..1000 {
+        for _ in 0..10000000 {
             if let Some((msg, _from)) = channel.recv()? {
                 println!("Received: {}", msg);
                 let result_msg = ResultMessage::from_str(&msg)?;
