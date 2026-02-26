@@ -246,7 +246,7 @@ impl Dispatcher {
         let (ec2_client, ..) = self.create_service().await;
         self.terminate_instance(&ec2_client, old_instance_id)
             .await?;
-        info!("Instance stopped for restart");
+        info!("Send termination message to old instance, sending task to new instance");
         self.manage_petition(new_instance_id, context, tx).await
     }
 
