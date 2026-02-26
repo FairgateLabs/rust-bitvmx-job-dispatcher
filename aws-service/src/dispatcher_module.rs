@@ -111,20 +111,25 @@ impl Dispatcher {
             }
         };
 
-        let output_file_path = match job_context
+        self.add_job(job_context.clone())?;
+
+        Ok(job_context)
+    }
+
+    pub fn add_job(&mut self, context: JobContext) -> Result<(), DispatcherError> {
+         let output_file_path = match context
             .download_bucket
-            .get(&format!("output_{}.json", msg.job_id))
+            .get(&format!("output_{}.json", context.job_id))
         {
             Some(path) => path.clone(),
             None => {
-                error!("Output path not found for job ID: {}", msg.job_id);
+                error!("Output path not found for job ID: {}", context.job_id);
                 return Err(DispatcherError::OutputPathNotFound);
             }
         };
 
-        self.jobs.insert(msg.job_id.clone(), output_file_path);
-
-        Ok(job_context)
+        self.jobs.insert(context.job_id.clone(), output_file_path);
+        Ok(())
     }
 
     pub fn discard_job(&mut self, id: &str) -> Option<String> {
@@ -152,6 +157,8 @@ impl Dispatcher {
                     return None;
                 }
             }
+        } else {
+            error!("No output found for job ID: {}", id);
         }
         None
     }
@@ -233,7 +240,7 @@ impl Dispatcher {
     }
 
     pub async fn restart_petition(
-        &self,
+        &mut self,
         old_instance_id: &str,
         new_instance_id: &str,
         context: JobContext,
@@ -243,6 +250,7 @@ impl Dispatcher {
             "Restarting petition for job ID: {} on instance ID: {}",
             context.job_id, old_instance_id
         );
+
         let (ec2_client, ..) = self.create_service().await;
         self.terminate_instance(&ec2_client, old_instance_id)
             .await?;
@@ -285,11 +293,12 @@ impl Dispatcher {
         self.download_file(&s3_client, &context).await?;
         info!("File downloaded");
 
-        info!("Stopping instance {}", instance_id);
+        info!("Terminating instance {}", instance_id);
         self.terminate_instance(&ec2_client, instance_id).await?;
-        info!("Instance stopped");
+        info!("Instance terminated");
 
         tx.send(())?;
+        info!("Sent completion signal for job ID: {} on instance ID: {}", context.job_id, instance_id);
         Ok(())
     }
 

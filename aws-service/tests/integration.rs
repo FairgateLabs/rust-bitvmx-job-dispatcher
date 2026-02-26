@@ -40,11 +40,11 @@ fn test_aws_dispatcher() -> Result<(), anyhow::Error> {
 
     let _dispatcher_handler = start_dispatcher(running_dispatcher.clone(), config_path.clone())?;
     let zkp_handler = start_zkp(PORT);
-    std::thread::sleep(std::time::Duration::from_secs(60));
+    std::thread::sleep(std::time::Duration::from_secs(30));
 
     info!("⛔ Shutting down dispatcher...");
     running_dispatcher.store(false, Ordering::SeqCst);
-    std::thread::sleep(std::time::Duration::from_secs(15));
+    std::thread::sleep(std::time::Duration::from_secs(10));
 
     info!("🔄 Restarting dispatcher...");
     let running_dispatcher = Arc::new(AtomicBool::new(true));

@@ -75,8 +75,9 @@ impl DispatcherHandler {
                 let (tx, rx) = channel::<()>();
                 let old_instance_id = instance_id.clone();
                 let new_instance_id_cloned = new_instance_id.clone();
-                let dispatcher_clone = dispatcher.clone();
+                let mut dispatcher_clone = dispatcher.clone();
                 let restored_context = instance_status.0.clone().unwrap();
+                dispatcher.add_job(restored_context.clone())?;
                 handle.spawn(async move {
                     if let Err(e) = dispatcher_clone
                         .restart_petition(
@@ -91,12 +92,12 @@ impl DispatcherHandler {
                     }
                 });
                 storage.replace_instance_id(&instance_id, &new_instance_id)?;
-                let instance_status = (
+                let new_instance_status = (
                     instance_status.0.clone(),
                     instance_status.1.clone(),
                     Some(rx),
                 );
-                instances_status.insert(new_instance_id.clone(), instance_status);
+                instances_status.insert(new_instance_id.clone(), new_instance_status);
             }
         }
 
@@ -166,23 +167,35 @@ impl DispatcherHandler {
             }
         }
 
-        for (instance_id, (context, id, rx)) in self.instances_status.iter_mut() {
+        let mut ready_instances: Vec<String> = Vec::new();
+
+        for (instance_id, (context, id, rx)) in self.instances_status.iter() {
             let ready = rx.as_ref().unwrap().try_recv().is_ok();
             if ready {
+                debug!("Instance {} is ready", instance_id);
                 let job_id = &context.as_ref().unwrap().job_id;
                 if let Some(result) = self.dispatcher.process_result(&job_id) {
+                    debug!("Processed result for job ID: {}", job_id);
                     if let Err(e) = self.channel.send(
                         &id.clone().unwrap(),
                         ResultMessage::new(job_id.clone(), result).to_string(),
                     ) {
                         error!("Failed to send result: {}", e);
                     }
+                } else {
+                    warn!("No result found for job ID: {}", job_id);
                 }
                 self.storage.delete_instance_status(instance_id)?;
+                ready_instances.push(instance_id.clone());
             } else {
                 debug!("Instance {} is still not ready", instance_id);
             }
         }
+
+        for instance_id in ready_instances {
+            self.instances_status.remove(&instance_id);
+        }
+
         Ok(())
     }
 }
