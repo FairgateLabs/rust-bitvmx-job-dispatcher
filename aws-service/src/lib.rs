@@ -140,7 +140,7 @@ impl DispatcherHandler {
             let running_instances = self.instances_status.iter().count();
             info!("Running instance count: {:?}", running_instances);
 
-            if running_instances >= self.max_running_instances {
+            if running_instances <= self.max_running_instances {
                 if let Some((id, context)) = self.pending_jobs.pop() {
                     let instance_id = self
                         .handle
@@ -199,7 +199,7 @@ pub fn dispatcher_loop(
 
     let handle = runtime.handle().clone();
     let mut dispatcher_handler =
-        DispatcherHandler::new(channel, config_path, handle, storage, &runtime)?; //TODO: Make configurable
+        DispatcherHandler::new(channel, config_path, handle, storage, &runtime)?;
 
     drop(runtime);
     while running.load(Ordering::SeqCst) {
