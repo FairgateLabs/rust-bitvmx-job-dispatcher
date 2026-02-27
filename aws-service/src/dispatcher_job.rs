@@ -21,8 +21,8 @@ impl ResultMessage {
     pub fn new(job_id: String, result: String) -> Self {
         Self { job_id, result }
     }
-    pub fn to_string(&self) -> String {
-        serde_json::to_string(self).unwrap()
+    pub fn to_string(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
     }
 
     pub fn from_str(msg: &str) -> Result<Self, serde_json::Error> {

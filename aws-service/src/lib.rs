@@ -52,9 +52,9 @@ impl DispatcherHandler {
         storage: Rc<Storage>,
         rt: &MutexGuard<'_, Runtime>,
     ) -> Result<Self, DispatcherError> {
-        let mut dispatcher = Dispatcher::new(config_path.clone())?;
+        let mut dispatcher = handle.block_on(Dispatcher::new(config_path.clone()))?;
         let storage = DispatcherStorage::new(storage);
-        let max_running_instances = dispatcher.obtain_max_running_instances()?;
+        let max_running_instances = dispatcher.obtain_max_running_instances();
         let mut instances_status = HashMap::new();
         let (restored_pending_jobs, restored_instances_status) = storage.restore_data()?;
         for (instance_id, instance_status) in restored_instances_status {
@@ -64,7 +64,7 @@ impl DispatcherHandler {
                 let job_id = &context.job_id;
                 if let Some(result) = dispatcher.process_result(&job_id) {
                     if let Err(e) = message_channel
-                        .send(&id, ResultMessage::new(job_id.clone(), result).to_string())
+                        .send(&id, ResultMessage::new(job_id.clone(), result).to_string()?)
                     {
                         error!("Failed to send result: {}", e);
                     }
@@ -178,7 +178,7 @@ impl DispatcherHandler {
                     debug!("Processed result for job ID: {}", job_id);
                     if let Err(e) = self.channel.send(
                         &id.clone().unwrap(),
-                        ResultMessage::new(job_id.clone(), result).to_string(),
+                        ResultMessage::new(job_id.clone(), result).to_string()?,
                     ) {
                         error!("Failed to send result: {}", e);
                     }

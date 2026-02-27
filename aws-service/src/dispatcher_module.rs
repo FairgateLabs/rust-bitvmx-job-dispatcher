@@ -3,10 +3,10 @@ use crate::{
     dispatcher_error::DispatcherError,
     dispatcher_job::{DispatcherJob, ProverJobType},
 };
-use aws_config::{BehaviorVersion, Region};
+use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_sdk_ec2::{
     Client as Ec2Client,
-    types::{IamInstanceProfileSpecification, SummaryStatus},
+    types::{IamInstanceProfileSpecification, InstanceType, SummaryStatus},
 };
 use aws_sdk_s3::{Client as S3Client, config::Credentials, types::ChecksumMode};
 use aws_sdk_ssm::{
@@ -53,14 +53,30 @@ impl JobContext {
 pub struct Dispatcher {
     jobs: HashMap<String, String>,
     config: AppConfig,
+    aws_config: SdkConfig,
 }
 
 impl Dispatcher {
-    pub fn new(config_path: String) -> Result<Self, DispatcherError> {
+    pub async fn new(config_path: String) -> Result<Self, DispatcherError> {
         let config = AppConfig::load(Some(config_path))?;
+        let creds = Credentials::new(
+            config.aws.access_key_id.clone(),
+            config.aws.secret_access_key.clone(),
+            None,
+            None,
+            "static-loaded-from-config",
+        );
+
+        let aws_config = aws_config::defaults(BehaviorVersion::latest())
+            .region(Region::new(config.aws.region.clone()))
+            .credentials_provider(creds)
+            .load()
+            .await;
+
         Ok(Self {
             jobs: HashMap::new(),
             config,
+            aws_config,
         })
     }
 
@@ -173,11 +189,12 @@ impl Dispatcher {
     }
 
     pub async fn obtain_new_instance(&self) -> Result<String, DispatcherError> {
-        let (ec2_client, ..) = self.create_service().await;
+        let (ec2_client, ..) = self.create_clients().await;
+        let instance_type = InstanceType::from(self.config.ec2.instance_type.as_str());
         let run_response = ec2_client
             .run_instances()
             .image_id(self.config.ec2.image_id.clone())
-            .instance_type(aws_sdk_ec2::types::InstanceType::T3Xlarge)
+            .instance_type(instance_type)
             .iam_instance_profile(
                 IamInstanceProfileSpecification::builder()
                     .arn(&self.config.ec2.instance_profile_arn)
@@ -189,12 +206,18 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
 
-        let instance_id = run_response
-            .instances()
-            .first()
-            .unwrap()
-            .instance_id()
-            .unwrap();
+        let instances = run_response
+            .instances();
+
+        if instances.len() != 1 {
+            error!("Expected to launch 1 instance, but launched {}", instances.len());
+            return Err(DispatcherError::InstanceLaunchFailed);
+        }
+
+        let instance_id = instances[0].instance_id().ok_or_else(|| {
+            error!("No instance ID returned from run_instances response");
+            DispatcherError::InstanceLaunchFailed
+        })?;
 
         Ok(instance_id.to_string())
     }
@@ -204,9 +227,9 @@ impl Dispatcher {
         instance_id: &str,
         context: &JobContext,
     ) -> Result<bool, DispatcherError> {
-        let (_, ssm_client, s3_client) = self.create_service().await;
+        let (_, ssm_client, s3_client) = self.create_clients().await;
         if !self
-            .command_runned_finished_succesfully(instance_id, ssm_client)
+            .command_ran_finished_successfully(instance_id, ssm_client)
             .await?
         {
             return Ok(false);
@@ -251,7 +274,7 @@ impl Dispatcher {
             context.job_id, old_instance_id
         );
 
-        let (ec2_client, ..) = self.create_service().await;
+        let (ec2_client, ..) = self.create_clients().await;
         self.terminate_instance(&ec2_client, old_instance_id)
             .await?;
         info!("Send termination message to old instance, sending task to new instance");
@@ -269,7 +292,7 @@ impl Dispatcher {
             context.job_id, instance_id
         );
 
-        let (ec2_client, ssm_client, s3_client) = self.create_service().await;
+        let (ec2_client, ssm_client, s3_client) = self.create_clients().await;
 
         self.upload_file(&s3_client, &context).await?;
 
@@ -432,26 +455,12 @@ impl Dispatcher {
         }
     }
 
-    async fn create_service(&self) -> (Ec2Client, SsmClient, S3Client) {
-        let creds = Credentials::new(
-            self.config.aws.access_key_id.clone(),
-            self.config.aws.secret_access_key.clone(),
-            None,
-            None,
-            "static-loaded-from-config",
-        );
+    async fn create_clients(&self) -> (Ec2Client, SsmClient, S3Client) {
+        let ec2_client = Ec2Client::new(&self.aws_config);
+        let ssm_client = SsmClient::new(&self.aws_config);
+        let s3_client = S3Client::new(&self.aws_config);
 
-        let config = aws_config::defaults(BehaviorVersion::latest())
-            .region(Region::new(self.config.aws.region.clone()))
-            .credentials_provider(creds)
-            .load()
-            .await;
-
-        let client = Ec2Client::new(&config);
-        let ssm_client = SsmClient::new(&config);
-        let s3_client = S3Client::new(&config);
-
-        (client, ssm_client, s3_client)
+        (ec2_client, ssm_client, s3_client)
     }
 
     async fn terminate_instance(
@@ -478,7 +487,6 @@ impl Dispatcher {
         let command = client
             .send_command()
             .instance_ids(instance_id)
-            .document_name("AWS-RunShellScript")
             .parameters("commands", context.job_args.clone())
             .send()
             .await
@@ -486,9 +494,11 @@ impl Dispatcher {
 
         let command_id = command
             .command()
-            .expect("No command received")
-            .command_id()
-            .expect("No command_id received");
+            .and_then(|c| c.command_id())
+            .ok_or_else(|| {
+                error!("No command ID returned from send_command response");
+                DispatcherError::CommandIdNotFound
+            })?;
 
         info!("Command sent. ID: {}", command_id);
 
@@ -587,7 +597,7 @@ impl Dispatcher {
         Ok(())
     }
 
-    async fn command_runned_finished_succesfully(
+    async fn command_ran_finished_successfully(
         &self,
         instance_id: &str,
         ssm_client: SsmClient,
@@ -650,8 +660,8 @@ impl Dispatcher {
         }
     }
 
-    pub fn obtain_max_running_instances(&self) -> Result<usize, DispatcherError> {
-        Ok(self.config.ec2.max_running_instances)
+    pub fn obtain_max_running_instances(&self) -> usize {
+        self.config.ec2.max_running_instances
     }
 }
 
@@ -695,9 +705,9 @@ mod tests {
         init_trace().unwrap();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
+        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
 
-        let (ec2_client, ssm_client, s3_client) = dispatcher.create_service().await;
+        let (ec2_client, ssm_client, s3_client) = dispatcher.create_clients().await;
 
         let instance_id = dispatcher.obtain_new_instance().await.unwrap();
 
@@ -768,7 +778,7 @@ mod tests {
         init_trace().unwrap();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
+        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
 
         let inexistent_instance_id = "i-1234567890abcdef0";
         let test_context = JobContext::new(
@@ -792,8 +802,8 @@ mod tests {
         init_trace().unwrap();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
-        let (ec2_client, ssm_client, _) = dispatcher.create_service().await;
+        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
+        let (ec2_client, ssm_client, _) = dispatcher.create_clients().await;
 
         let test_context_2 = JobContext::new(
             "test_job".to_string(),
@@ -833,8 +843,8 @@ mod tests {
         init_trace().unwrap();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
-        let (ec2_client, ssm_client, _) = dispatcher.create_service().await;
+        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
+        let (ec2_client, ssm_client, _) = dispatcher.create_clients().await;
 
         let instance_id = dispatcher.obtain_new_instance().await.unwrap();
         let test_context = JobContext::new(
@@ -885,8 +895,8 @@ mod tests {
         init_trace().unwrap();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).unwrap();
-        let (ec2_client, ssm_client, _) = dispatcher.create_service().await;
+        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
+        let (ec2_client, ssm_client, _) = dispatcher.create_clients().await;
 
         let instance_id = dispatcher.obtain_new_instance().await.unwrap();
         let test_context = JobContext::new(

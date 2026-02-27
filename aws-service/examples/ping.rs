@@ -7,7 +7,7 @@ use tracing_subscriber::{
 // 1. run the server example first (from bitvmx-broker).
 //      cargo run --release --example server -- --port 10000
 // 2. Then run the job-dispatcher
-//      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1
+//      cargo run --release --bin bitvmx-aws-job-dispatcher -- --port 10000 --my-id 1
 // 3. Then trigger one execution
 //      cargo run --release --example challenge --features "emulator"
 

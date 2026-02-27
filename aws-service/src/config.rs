@@ -21,6 +21,7 @@ pub struct AwsConfig {
 pub struct Ec2Config {
     pub image_id: String,
     pub instance_profile_arn: String,
+    pub instance_type: String,
     pub max_running_instances: usize,
 }
 

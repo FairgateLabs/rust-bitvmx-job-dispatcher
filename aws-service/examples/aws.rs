@@ -11,7 +11,7 @@ pub mod prover {
     // To make this example work, you need to:
     // 1. Follow AWS Instance Setup in README.md
     // 2. Run the server example first.
-    //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1 --dest-id 2
+    //      cargo run --release --bin bitvmx-aws-job-dispatcher -- --port 10000 --my-id 1
     // 3. Then run the job-dispatcher
     //      cargo run --release --features "prover"
     // 4. Then trigger one execution

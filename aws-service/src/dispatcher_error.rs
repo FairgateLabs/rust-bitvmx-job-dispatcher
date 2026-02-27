@@ -64,4 +64,10 @@ pub enum DispatcherError {
 
     #[error("The file uploaded to S3 is corrupted")]
     CorruptedS3File,
+
+    #[error("Instance launch failed")]
+    InstanceLaunchFailed,
+
+    #[error("Command ID not found")]
+    CommandIdNotFound,
 }

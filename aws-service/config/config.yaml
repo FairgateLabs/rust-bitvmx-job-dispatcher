@@ -7,9 +7,10 @@ ec2:
   image_id: "ami-0c4d37e988d482206"
   instance_profile_arn: "arn:aws:iam::280362093965:instance-profile/ZKP"
   max_running_instances: 3
+  instance_type: "t3.xlarge"
 
 s3:
-  bucket: "prueba-zkp2" #TODO: rename
+  bucket: "jd-testing"
 
 paths:
   repository_path: "/home/ubuntu/rust-bitvmx-zk-proof"
