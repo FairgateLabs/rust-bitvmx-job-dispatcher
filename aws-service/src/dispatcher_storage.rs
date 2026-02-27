@@ -65,21 +65,31 @@ impl DispatcherStorage {
         id: &Identifier,
     ) -> Result<(), DispatcherError> {
         let transaction_id = self.storage.begin_transaction();
-        let key_pending = self.pending_job_key(&id);
-        let context: Option<(JobContext, Identifier)> = self.storage.get(key_pending.clone())?;
-        let context = match context {
-            Some((context, _)) => context,
-            None => {
-                self.storage.rollback_transaction(transaction_id)?;
-                return Err(DispatcherError::PendingJobNotFound);
-            }
-        };
-        self.storage.remove(key_pending, Some(transaction_id))?;
-        let key_status = self.instance_status_key(instance_id);
-        self.storage
-            .set(key_status, (context, id), Some(transaction_id))?;
-        self.storage.commit_transaction(transaction_id)?;
-        Ok(())
+
+        let result: Result<(), DispatcherError> = (|| {
+            let key_pending = self.pending_job_key(id);
+            let context: Option<(JobContext, Identifier)> = self.storage.get(key_pending.clone())?;
+            let context = match context {
+                Some((context, _)) => context,
+                None => return Err(DispatcherError::PendingJobNotFound),
+            };
+
+            self.storage.remove(key_pending, Some(transaction_id))?;
+
+            let key_status = self.instance_status_key(instance_id);
+            self.storage
+                .set(key_status, (context, id), Some(transaction_id))?;
+
+            self.storage.commit_transaction(transaction_id)?;
+            Ok(())
+        })();
+
+        if let Err(e) = result {
+            self.storage.rollback_transaction(transaction_id)?;
+            return Err(e);
+        }
+
+        result
     }
 
     pub fn delete_instance_status(&self, instance_id: &str) -> Result<(), DispatcherError> {
@@ -99,10 +109,18 @@ impl DispatcherStorage {
         match values {
             Some((context, identifier)) => {
                 let transaction_id = self.storage.begin_transaction();
-                self.storage
-                    .set(key_new, (context, identifier), Some(transaction_id))?;
-                self.storage.remove(key_old, Some(transaction_id))?;
-                self.storage.commit_transaction(transaction_id)?;
+                let result: Result<(), DispatcherError> = (|| {
+                    self.storage
+                        .set(key_new, (context, identifier), Some(transaction_id))?;
+                    self.storage.remove(key_old, Some(transaction_id))?;
+                    self.storage.commit_transaction(transaction_id)?;
+                    Ok(())
+                })();
+                
+                if let Err(e) = result {
+                    self.storage.rollback_transaction(transaction_id)?;
+                    return Err(e);
+                }
             }
             None => {
                 error!("Pending job with id {} not found", old_id);
