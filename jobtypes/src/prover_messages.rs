@@ -39,10 +39,6 @@ impl DispatcherMessage for ProverJobType {
             ProverJobType::Prove(..) => "ProveResult".to_string(),
         }
     }
-
-    fn commit_checkpoint(&self) -> Result<(), DispatcherError> {
-        todo!() //TODO:
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
