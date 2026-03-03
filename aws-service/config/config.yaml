@@ -10,7 +10,7 @@ ec2:
   instance_type: "t3.xlarge"
 
 s3:
-  bucket: "jd-testing"
+  bucket: "job-dispatcher-testing"
 
 paths:
   repository_path: "/home/ubuntu/rust-bitvmx-zk-proof"

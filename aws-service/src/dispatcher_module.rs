@@ -487,6 +487,7 @@ impl Dispatcher {
         let command = client
             .send_command()
             .instance_ids(instance_id)
+            .document_name("AWS-RunShellScript")
             .parameters("commands", context.job_args.clone())
             .send()
             .await
@@ -537,7 +538,7 @@ impl Dispatcher {
                         );
                     }
                     _ => {
-                        error!("Command execution failed with status: {:?}", status);
+                        error!("Command execution failed with status: {:?}, result: {:?}", status, inv.standard_error_content());
                         return Err(DispatcherError::CommandExecutionFailed);
                     }
                 },
