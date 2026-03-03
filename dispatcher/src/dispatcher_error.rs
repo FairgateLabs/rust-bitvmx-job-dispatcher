@@ -32,4 +32,7 @@ pub enum DispatcherError {
 
     #[error("Broker error")]
     BrokerError(#[from] bitvmx_broker::rpc::errors::BrokerError),
+
+    #[error("Checkpoint path error: {0}")]
+    CheckpointPathError(String),
 }

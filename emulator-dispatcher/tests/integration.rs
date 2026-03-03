@@ -33,6 +33,7 @@ const PORT: u16 = 10300;
 
 #[test]
 fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
+    std::env::set_current_dir("..").unwrap();
     init_trace()?;
     let storage_path = get_storage_path();
     let mut server_handler = init_server(PORT)?;
@@ -100,7 +101,7 @@ fn start_emulator(
     let handle = thread::spawn(move || {
         let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let my_id = 1;
-        let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key").unwrap();
+        let privk = fs::read_to_string("../rust-bitvmx-broker/certs/services.key").unwrap();
 
         let cert = Cert::new_with_privk(&privk).unwrap();
         let allow_list =
@@ -126,7 +127,7 @@ fn start_emulator(
 }
 
 fn start_challenge(port: u16) -> Result<thread::JoinHandle<()>, anyhow::Error> {
-    let path = Paths::new("../");
+    let path = Paths::new("");
     let handle = thread::spawn(move || {
         challenge::emulator::run_job(path, port).unwrap();
     });
@@ -134,7 +135,7 @@ fn start_challenge(port: u16) -> Result<thread::JoinHandle<()>, anyhow::Error> {
 }
 
 fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
-    let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key").unwrap();
+    let privk = fs::read_to_string("../rust-bitvmx-broker/certs/services.key").unwrap();
     let cert = Cert::new_with_privk(&privk).unwrap();
     let allow_list =
         AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]).unwrap();

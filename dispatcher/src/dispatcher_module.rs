@@ -65,6 +65,10 @@ where
         self.jobs.remove(id);
     }
 
+    pub fn get_job_type(&self, id: &str) -> Option<&V> {
+        self.jobs.get(id)
+    }
+
     pub fn process_result(
         &mut self,
         id: &str,

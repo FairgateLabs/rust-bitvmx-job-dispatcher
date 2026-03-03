@@ -15,8 +15,8 @@ use tracing_subscriber::{
 pub(crate) struct Paths {
     pub privk: String,
     pub yaml_path: String,
-    pub checkpoint_prover_path: String,
-    pub checkpoint_verifier_path: String,
+    pub checkpoint_prover_base: String,
+    pub checkpoint_verifier_base: String,
     pub commands_file: String,
 }
 
@@ -28,8 +28,8 @@ impl Paths {
                 "{}../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml",
                 path_corrector
             ),
-            checkpoint_prover_path: format!("{}temp-runs/challenge/42/prover/", path_corrector),
-            checkpoint_verifier_path: format!("{}temp-runs/challenge/42/verifier/", path_corrector),
+            checkpoint_prover_base: format!("{}temp-runs/challenge/prover/", path_corrector),
+            checkpoint_verifier_base: format!("{}temp-runs/challenge/verifier/", path_corrector),
             commands_file: format!("{}temp-runs/commands.json", path_corrector),
         }
     }
@@ -45,7 +45,7 @@ pub mod emulator {
     use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
     use emulator::executor::utils::FailConfiguration;
     use std::net::Ipv4Addr;
-    use std::{fs, net::IpAddr, path::Path, thread::sleep, time::Duration};
+    use std::{fs, net::IpAddr, thread::sleep, time::Duration};
     use tracing::info;
 
     pub(crate) fn run_job(paths: Paths, port: u16) -> Result<(), anyhow::Error> {
@@ -72,26 +72,18 @@ pub mod emulator {
             allow_list,
         )?;
 
-        let input = 0;
+        let input = 17;
         let input = vec![17, 17, 17, input];
         let yaml_path = paths.yaml_path;
-        let checkpoint_prover_path = paths.checkpoint_prover_path;
-        let checkpoint_verifier_path = paths.checkpoint_verifier_path;
+        let checkpoint_prover_path = paths.checkpoint_prover_base;
+        let checkpoint_verifier_path = paths.checkpoint_verifier_base;
         let commands_file = paths.commands_file;
 
         let fail_config_prover = Some(FailConfiguration::new_fail_hash(100));
         let fail_config_verifier = None;
-        let force_condition = emulator::decision::challenge::ForceCondition::ValidInputStepAndHash;
+        let force_condition =
+            emulator::decision::challenge::ForceCondition::ValidInputWrongStepOrHash;
         let force_challenge = emulator::decision::challenge::ForceChallenge::No;
-
-        for path in &[
-            checkpoint_prover_path.clone(),
-            checkpoint_verifier_path.clone(),
-        ] {
-            if !Path::new(path).exists() {
-                fs::create_dir_all(path)?;
-            }
-        }
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
@@ -106,7 +98,7 @@ pub mod emulator {
         channel.send(&emulator_id.clone(), msg)?;
 
         info!("Starting emulator job...");
-        let (prover_result, job_id) = wait_for_result(&channel, "ProverExecuteResult", 10, 1)?;
+        let (prover_result, job_id) = wait_for_result(&channel, "ProverExecuteResult", 20, 1)?;
         let (step, hash, halt) =
             EmulatorResultType::from_value(prover_result)?.as_prover_execute()?;
 
@@ -132,7 +124,7 @@ pub mod emulator {
         channel.send(&emulator_id.clone(), msg)?;
 
         let (verifier_result, job_id) =
-            wait_for_result(&channel, "VerifierCheckExecutionResult", 10, 1)?;
+            wait_for_result(&channel, "VerifierCheckExecutionResult", 20, 1)?;
         let step = EmulatorResultType::from_value(verifier_result)?.as_verifier_check()?;
         info!("✅ Checked verifier result with last step {:?}", step);
         info!("with job_id {}", job_id);
@@ -149,13 +141,13 @@ pub mod emulator {
                     v_decision,
                     commands_file.clone(),
                     fail_config_prover.clone(),
-                    emulator::decision::nary_search::NArySearchType::ReadValueChallenge,
+                    emulator::decision::nary_search::NArySearchType::ConflictStep,
                 ),
             })?;
             channel.send(&emulator_id.clone(), msg)?;
 
             let (prover_hashes_result, job_id) =
-                wait_for_result(&channel, "ProverGetHashesForRoundResult", 10, 1)?;
+                wait_for_result(&channel, "ProverGetHashesForRoundResult", 20, 1)?;
             let (hashes, mut my_round): (Vec<String>, u8) =
                 EmulatorResultType::from_value(prover_hashes_result)?.as_prover_hashes()?;
             info!("✅ Got prover hashes: {:?}, round: {:?}", hashes, my_round);
@@ -170,13 +162,13 @@ pub mod emulator {
                     hashes,
                     commands_file.clone(),
                     fail_config_verifier.clone(),
-                    emulator::decision::nary_search::NArySearchType::ReadValueChallenge,
+                    emulator::decision::nary_search::NArySearchType::ConflictStep,
                 ),
             })?;
             channel.send(&emulator_id.clone(), msg)?;
 
             let (verifier_choose_segment_result, job_id) =
-                wait_for_result(&channel, "VerifierChooseSegmentResult", 10, 1)?;
+                wait_for_result(&channel, "VerifierChooseSegmentResult", 20, 1)?;
             (v_decision, my_round) =
                 EmulatorResultType::from_value(verifier_choose_segment_result)?.as_v_decision()?;
             info!(
@@ -198,7 +190,7 @@ pub mod emulator {
         })?;
         channel.send(&emulator_id.clone(), msg)?;
 
-        let (final_trace, job_id) = wait_for_result(&channel, "ProverFinalTraceResult", 10, 1)?;
+        let (final_trace, job_id) = wait_for_result(&channel, "ProverFinalTraceResult", 20, 1)?;
         let final_trace = EmulatorResultType::from_value(final_trace)?.as_final_trace()?;
 
         info!("✅ Got prover final trace: {:?}", final_trace);
@@ -230,7 +222,7 @@ pub mod emulator {
                 channel.send(&emulator_id, msg)?;
 
                 let (result, job_id) =
-                    wait_for_result(&channel, "VerifierChooseChallengeResult", 10, 1)?;
+                    wait_for_result(&channel, "VerifierChooseChallengeResult", 20, 1)?;
                 let challenge = EmulatorResultType::from_value(result)?.as_challenge()?;
                 info!("✅ Got verifier choose challenge: {:?}", challenge);
                 info!("with job_id {}", job_id);

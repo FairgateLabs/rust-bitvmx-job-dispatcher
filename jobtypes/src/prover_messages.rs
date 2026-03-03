@@ -32,13 +32,16 @@ impl DispatcherMessage for ProverJobType {
                 Ok((cmd, args, json))
             }
         }
-
     }
 
     fn message_type(&self) -> String {
         match self {
             ProverJobType::Prove(..) => "ProveResult".to_string(),
         }
+    }
+
+    fn commit_checkpoint(&self) -> Result<(), DispatcherError> {
+        todo!() //TODO:
     }
 }
 
