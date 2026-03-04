@@ -140,7 +140,7 @@ impl DispatcherHandler {
         if !self.pending_jobs.is_empty() {
             let running_instances = self.instances_status.iter().count();
 
-            if running_instances <= self.max_running_instances {
+            if running_instances < self.max_running_instances {
                 if let Some((id, context)) = self.pending_jobs.pop() {
                     let instance_id = self
                         .handle

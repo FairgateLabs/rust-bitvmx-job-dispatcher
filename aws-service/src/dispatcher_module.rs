@@ -353,6 +353,8 @@ impl Dispatcher {
         ssm_client: &SsmClient,
         instance_id: &str,
     ) -> Result<(), DispatcherError> {
+        let time = Instant::now();
+
         loop {
             let resp = client
                 .describe_instances()
@@ -379,10 +381,17 @@ impl Dispatcher {
                 _ => debug!("Instance state is {}, waiting for 'running'...", state),
             }
 
+            if time.elapsed() > Duration::from_secs(300) {
+                error!("Instance {} did not reach 'running' state within 5 minutes", instance_id);
+                return Err(DispatcherError::InstanceTimeout);
+            }
+
             sleep(Duration::from_secs(1)).await;
         }
 
         info!("Instance is running, checking system and instance status...");
+
+        let time = Instant::now();
 
         loop {
             let resp = client
@@ -420,6 +429,11 @@ impl Dispatcher {
                     break;
                 }
 
+                if time.elapsed() > Duration::from_secs(300) {
+                    error!("Instance {} did not reach 'running' state within 5 minutes", instance_id);
+                    return Err(DispatcherError::InstanceTimeout);
+                }
+
                 debug!("Instance status is not ok yet, waiting...");
             }
 
@@ -427,6 +441,8 @@ impl Dispatcher {
         }
 
         info!("Instance Status is ok, checking SSM status...");
+
+        let time = Instant::now();
 
         loop {
             let resp = ssm_client
@@ -451,6 +467,10 @@ impl Dispatcher {
                 }
             }
             debug!("SSM status is not online yet, waiting...");
+            if time.elapsed() > Duration::from_secs(300) {
+                error!("Instance {} did not reach 'online' state within 5 minutes", instance_id);
+                return Err(DispatcherError::InstanceTimeout);
+            }
             sleep(Duration::from_secs(1)).await;
         }
     }
