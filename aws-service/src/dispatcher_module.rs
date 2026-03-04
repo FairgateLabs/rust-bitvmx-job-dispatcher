@@ -236,7 +236,9 @@ impl Dispatcher {
         {
             return Ok(false);
         }
-        match self.download_file(&s3_client, context).await {
+
+
+        match self.file_state_is_valid(&s3_client, context).await {
             Ok(_) => Ok(true),
             Err(DispatcherError::CorruptedS3File) => {
                 error!(
@@ -264,6 +266,28 @@ impl Dispatcher {
         }
     }
 
+    async fn file_state_is_valid(&self, client: &S3Client, context: &JobContext) -> Result<(), DispatcherError> {
+        Ok(for (file_name, _) in &context.download_bucket {
+            let bucket = &self.config.s3.bucket;
+            let resp = client
+                .head_object()
+                .bucket(bucket)
+                .key(file_name)
+                .checksum_mode(ChecksumMode::Enabled)
+                .send()
+                .await
+                .map_err(|e| DispatcherError::S3Error(e.into()))?;
+    
+            if resp.checksum_sha256().is_none() {
+                info!(
+                    "Output file {} does not have a checksum, treating as corrupted",
+                    file_name
+                );
+                return Err(DispatcherError::CorruptedS3File);
+            }
+        })
+    }
+    
     pub async fn restart_petition(
         &mut self,
         old_instance_id: &str,
@@ -489,7 +513,7 @@ impl Dispatcher {
         }
     }
 
-    async fn create_clients(&self) -> (Ec2Client, SsmClient, S3Client) {
+    pub async fn create_clients(&self) -> (Ec2Client, SsmClient, S3Client) {
         let ec2_client = Ec2Client::new(&self.aws_config);
         let ssm_client = SsmClient::new(&self.aws_config);
         let s3_client = S3Client::new(&self.aws_config);
@@ -591,7 +615,8 @@ impl Dispatcher {
 
         Ok(())
     }
-    async fn download_file(
+
+    pub async fn download_file(
         &self,
         client: &S3Client,
         context: &JobContext,
@@ -1018,7 +1043,6 @@ mod tests {
                         .check_job_finished(&instance_id, &test_context)
                         .await?
                 );
-                fs::remove_file("successful_test.txt")?;
             }
             Err(e) => {
                 error!("Error during test execution: {:?}", e);

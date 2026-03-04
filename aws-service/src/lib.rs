@@ -62,6 +62,8 @@ impl DispatcherHandler {
             let context = instance_status.0.clone().unwrap();
             let id = instance_status.1.clone().unwrap();
             if rt.block_on(dispatcher.check_job_finished(&instance_id, &context))? {
+                let (.., s3_client) = rt.block_on(dispatcher.create_clients());
+                rt.block_on(dispatcher.download_file(&s3_client, &context))?;
                 let job_id = &context.job_id;
                 if let Some(result) = dispatcher.process_result(&job_id) {
                     if let Err(e) = message_channel
