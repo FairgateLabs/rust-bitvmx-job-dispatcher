@@ -70,4 +70,7 @@ pub enum DispatcherError {
 
     #[error("Command ID not found")]
     CommandIdNotFound,
+
+    #[error("Instance timeout")]
+    InstanceTimeout,
 }
