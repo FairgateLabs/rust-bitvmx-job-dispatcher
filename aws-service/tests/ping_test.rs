@@ -25,7 +25,7 @@ use tracing_subscriber::{
     EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
-#[path = "../examples/ping.rs"]
+#[path = "../examples/aws_ping.rs"]
 mod ping;
 
 const PORT: u16 = 10300;
