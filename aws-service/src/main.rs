@@ -10,7 +10,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     rc::Rc,
     sync::{
-        Arc, Mutex, Once,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -18,7 +18,6 @@ use storage_backend::{storage::Storage, storage_config::StorageConfig};
 
 use clap::Parser;
 use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(about = "Emulator Dispatcher CLI", long_about = None)]
