@@ -11,7 +11,7 @@ use aws_sdk_ec2::{
 use aws_sdk_s3::{Client as S3Client, config::Credentials, types::ChecksumMode};
 use aws_sdk_ssm::{
     Client as SsmClient,
-    types::{CommandInvocation, CommandInvocationStatus, PingStatus},
+    types::{CommandInvocationStatus, PingStatus},
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, sync::mpsc::Sender, time::Duration};
@@ -643,18 +643,17 @@ impl Dispatcher {
     ) -> Result<bool, DispatcherError> {
         let resp = ssm_client
             .list_command_invocations()
+            .instance_id(instance_id)
             .details(true)
             .send()
             .await
             .map_err(|e| DispatcherError::SsmError(e.into()))?;
 
-        let mut invocations: Vec<&CommandInvocation> = resp
+        let mut invocations = resp
             .command_invocations()
-            .iter()
-            .filter(|inv| inv.instance_id() == Some(instance_id))
-            .collect();
+            .to_vec();
 
-        invocations.sort_by_key(|inv| inv.requested_date_time());
+        invocations.sort_by(|a, b| a.requested_date_time().cmp(&b.requested_date_time()));
         invocations.reverse();
 
         if let Some(last) = invocations.first() {
@@ -709,7 +708,7 @@ mod tests {
     use crate::init_trace;
 
     use super::*;
-    use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
+    use aws_config::{meta::region::RegionProviderChain, BehaviorVersion};
     use aws_sdk_ec2::Client as Ec2Client;
 
     #[tokio::test]
@@ -739,20 +738,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_functions() {
+    async fn test_functions() -> Result<(), DispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
+        let dispatcher = Dispatcher::new(config_path.clone()).await?;
 
         let (ec2_client, ssm_client, s3_client) = dispatcher.create_clients().await;
 
-        let instance_id = dispatcher.obtain_new_instance().await.unwrap();
-
-        dispatcher
-            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
-            .await
-            .unwrap();
+        let instance_id = dispatcher.obtain_new_instance().await?;
 
         let context = JobContext::new(
             "test_job".to_string(),
@@ -776,47 +770,65 @@ mod tests {
             )],
             HashMap::from([("hello.txt".to_string(), "hello.txt".to_string())]),
         );
-        dispatcher.upload_file(&s3_client, &context).await.unwrap();
-        info!("File uploaded successfully");
 
-        let command_id = dispatcher
+        let result: Result<(), DispatcherError> = (async {
+            dispatcher
+            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+            .await?;
+
+             dispatcher
             .send_command(&ssm_client, &instance_id, &context)
-            .await
-            .unwrap();
-        dispatcher
-            .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
-            .await
-            .unwrap();
-        info!("Command completed successfully");
+            .await?;
 
-        dispatcher
-            .download_file(&s3_client, &context)
-            .await
-            .unwrap();
-        assert!(
-            std::path::Path::new("hello.txt").exists(),
-            "File was not downloaded"
-        );
-        assert!(
-            std::fs::read_to_string("hello.txt").unwrap() == "Hello World\n",
-            "File contents are incorrect"
-        );
-        info!("File downloaded successfully");
-        fs::remove_file("hello.txt").unwrap();
+            dispatcher.upload_file(&s3_client, &context).await?;
+            info!("File uploaded successfully");
 
-        dispatcher
-            .terminate_instance(&ec2_client, &instance_id)
-            .await
-            .unwrap();
-        info!("Instance Terminated");
+            let command_id = dispatcher
+                .send_command(&ssm_client, &instance_id, &context)
+                .await?;
+            dispatcher
+                .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
+                .await?;
+            info!("Command completed successfully");
+
+            dispatcher
+                .download_file(&s3_client, &context)
+                .await?;
+
+            Ok(())
+        }).await;
+
+        dispatcher.terminate_instance(&ec2_client, &instance_id).await?;
+
+        match result {
+            Ok(_) => {
+                assert!(
+                    std::path::Path::new("hello.txt").exists(),
+                    "File was not downloaded"
+                );
+                assert!(
+                    std::fs::read_to_string("hello.txt")? == "Hello World\n",
+                    "File contents are incorrect"
+                );
+                info!("File downloaded successfully");
+                fs::remove_file("hello.txt")?;
+            }
+            Err(e) => {
+                error!("Error during test execution: {:?}", e);
+                return Err(e);
+            }
+        }
+        
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_check_job_finished_for_inexistent_instance_id() {
+    async fn test_check_job_finished_for_inexistent_instance_id() -> Result<(), DispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
+        let dispatcher = Dispatcher::new(config_path.clone()).await?;
 
         let inexistent_instance_id = "i-1234567890abcdef0";
         let test_context = JobContext::new(
@@ -830,17 +842,18 @@ mod tests {
         assert!(
             !dispatcher
                 .check_job_finished(inexistent_instance_id, &test_context)
-                .await
-                .unwrap()
+                .await?
         );
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_check_job_finished_for_unfinished_job() {
+    async fn test_check_job_finished_for_unfinished_job() -> Result<(), DispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
+        let dispatcher = Dispatcher::new(config_path.clone()).await?;
         let (ec2_client, ssm_client, _) = dispatcher.create_clients().await;
 
         let test_context_2 = JobContext::new(
@@ -851,40 +864,51 @@ mod tests {
             HashMap::new(),
         );
 
-        let instance_id = dispatcher.obtain_new_instance().await.unwrap();
+        let instance_id = dispatcher.obtain_new_instance().await?;
 
-        dispatcher
-            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
-            .await
-            .unwrap();
+        let result: Result<(), DispatcherError> = (async {
+            dispatcher
+                .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+                .await?;
 
-        dispatcher
-            .send_command(&ssm_client, &instance_id, &test_context_2)
-            .await
-            .unwrap();
+            dispatcher
+                .send_command(&ssm_client, &instance_id, &test_context_2)
+                .await?;
 
-        assert!(
-            !dispatcher
-                .check_job_finished(&instance_id, &test_context_2)
-                .await
-                .unwrap()
-        );
-
+            Ok(())
+        })
+        .await;
+    
         dispatcher
             .terminate_instance(&ec2_client, &instance_id)
-            .await
-            .unwrap();
+            .await?;
+
+        match result {
+            Ok(_) => {
+                assert!(
+                    !dispatcher
+                        .check_job_finished(&instance_id, &test_context_2)
+                        .await?
+                );
+            }
+            Err(e) => {
+                error!("Error during test execution: {:?}", e);
+                return Err(e);
+            }
+        }
+
+        Ok(())
     }
 
     #[tokio::test]
-    async fn test_check_job_finished_for_corrupt_file() {
+    async fn test_check_job_finished_for_corrupt_file() -> Result<(), DispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
+        let dispatcher = Dispatcher::new(config_path.clone()).await?;
         let (ec2_client, ssm_client, _) = dispatcher.create_clients().await;
 
-        let instance_id = dispatcher.obtain_new_instance().await.unwrap();
+        let instance_id = dispatcher.obtain_new_instance().await?;
         let test_context = JobContext::new(
             "test_job".to_string(),
             "Test".to_string(),
@@ -900,43 +924,54 @@ mod tests {
             HashMap::from([("hello.txt".to_string(), "hello.txt".to_string())]),
         );
 
-        dispatcher
-            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
-            .await
-            .unwrap();
+        let result: Result<(), DispatcherError> = (async {
+            dispatcher
+                .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+                .await?;
 
-        let command_id = dispatcher
-            .send_command(&ssm_client, &instance_id, &test_context)
-            .await
-            .unwrap();
+            let command_id = dispatcher
+                .send_command(&ssm_client, &instance_id, &test_context)
+                .await?;
 
-        dispatcher
-            .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
-            .await
-            .unwrap();
+            dispatcher
+                .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
+                .await?;
 
-        assert!(
-            !dispatcher
-                .check_job_finished(&instance_id, &test_context)
-                .await
-                .unwrap()
-        );
+            Ok(())
+        })
+        .await;
 
         dispatcher
             .terminate_instance(&ec2_client, &instance_id)
-            .await
-            .unwrap();
+            .await?;
+
+        match result {
+            Ok(_) => {
+                assert!(
+                    !dispatcher
+                        .check_job_finished(&instance_id, &test_context)
+                        .await?
+                );
+            }
+            Err(e) => {
+                error!("Error during test execution: {:?}", e);
+                return Err(e);
+            }
+        }
+
+        Ok(())
     }
 
+
     #[tokio::test]
-    async fn test_check_job_finished_successful() {
+    async fn test_check_job_finished_successful() -> Result<(), DispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
-        let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
+        let dispatcher = Dispatcher::new(config_path.clone()).await?;
         let (ec2_client, ssm_client, _) = dispatcher.create_clients().await;
 
-        let instance_id = dispatcher.obtain_new_instance().await.unwrap();
+        let instance_id = dispatcher.obtain_new_instance().await?;
         let test_context = JobContext::new(
             "test_job".to_string(),
             "Test".to_string(),
@@ -949,36 +984,48 @@ mod tests {
                 .to_string(),
             ],
             vec![],
-            HashMap::from([("successful_test.txt".to_string(), "successful_test.txt".to_string())]),
+            HashMap::from([(
+                "successful_test.txt".to_string(),
+                "successful_test.txt".to_string(),
+            )]),
         );
 
-        dispatcher
-            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
-            .await
-            .unwrap();
-
-        let command_id = dispatcher
-            .send_command(&ssm_client, &instance_id, &test_context)
-            .await
-            .unwrap();
-
-        dispatcher
-            .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
-            .await
-            .unwrap();
-
-        assert!(
+        let result: Result<(), DispatcherError> = (async {
             dispatcher
-                .check_job_finished(&instance_id, &test_context)
-                .await
-                .unwrap()
-        );
+                .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+                .await?;
 
-        fs::remove_file("successful_test.txt").unwrap();
+            let command_id = dispatcher
+                .send_command(&ssm_client, &instance_id, &test_context)
+                .await?;
+
+            dispatcher
+                .wait_for_command_completion(&ssm_client, &instance_id, &command_id)
+                .await?;
+
+            Ok(())
+        })
+        .await;
 
         dispatcher
             .terminate_instance(&ec2_client, &instance_id)
-            .await
-            .unwrap();
+            .await?;
+
+        match result {
+            Ok(_) => {
+                assert!(
+                    dispatcher
+                        .check_job_finished(&instance_id, &test_context)
+                        .await?
+                );
+                fs::remove_file("successful_test.txt")?;
+            }
+            Err(e) => {
+                error!("Error during test execution: {:?}", e);
+                return Err(e);
+            }
+        }   
+
+        Ok(())
     }
 }
