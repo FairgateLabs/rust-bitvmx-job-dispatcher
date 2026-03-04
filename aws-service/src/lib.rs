@@ -5,7 +5,7 @@ mod dispatcher_module;
 mod dispatcher_storage;
 
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
-use dispatcher_utils::{Msg, PingMessage};
+use bitvmx_dispatcher_utils::{Msg, PingMessage};
 use std::{
     collections::HashMap,
     rc::Rc,

@@ -12,7 +12,7 @@ anyhow = "1.0.95"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
 hex = "0.4"
-dispatcher-utils = { path = "../dispatcher-utils"}
+bitvmx-dispatcher-utils = { path = "../dispatcher-utils" }
 bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.5.1" }
 rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.5.1" }
 env = "1.0.1"

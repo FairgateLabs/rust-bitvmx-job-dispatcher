@@ -1,5 +1,5 @@
 [package]
-name = "dispatcher-utils"
+name = "bitvmx-dispatcher-utils"
 version = "0.5.0"
 edition = "2024"
 

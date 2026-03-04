@@ -16,7 +16,7 @@ use std::{
 };
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
 
-use clap::{Parser, command};
+use clap::Parser;
 use tracing::{error, info};
 use tracing_subscriber::{
     EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,

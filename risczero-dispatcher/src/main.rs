@@ -16,7 +16,7 @@ use bitvmx_broker::{
 
 use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
 use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
-use clap::{command, Parser};
+use clap::Parser;
 use tracing::info;
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,

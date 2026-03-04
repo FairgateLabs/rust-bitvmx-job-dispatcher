@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use dispatcher_utils::Msg;
+use bitvmx_dispatcher_utils::Msg;
 use serde::de::DeserializeOwned;
 use tracing::info;
 

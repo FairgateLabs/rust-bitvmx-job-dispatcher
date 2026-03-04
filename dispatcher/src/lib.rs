@@ -18,11 +18,11 @@ use std::{
 
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
 
+use bitvmx_dispatcher_utils::{Msg, PingMessage};
 use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
 use dispatcher_module::{Dispatcher, JobContext};
 use dispatcher_storage::DispatcherStorage;
-use dispatcher_utils::{Msg, PingMessage};
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
 use tracing::{debug, info, warn};

@@ -33,7 +33,7 @@ pub enum DispatcherError {
     InvalidStatus(String),
 
     #[error("Utils error {0}")]
-    UtilsError(#[from] dispatcher_utils::error::UtilsError),
+    UtilsError(#[from] bitvmx_dispatcher_utils::error::UtilsError),
 
     #[error("Broker error {0}")]
     BrokerError(#[from] bitvmx_broker::rpc::errors::BrokerError),
