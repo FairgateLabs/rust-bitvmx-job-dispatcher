@@ -10,7 +10,7 @@ use std::{
     collections::HashMap,
     rc::Rc,
     sync::{
-        Arc, Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard, Once,
         atomic::{AtomicBool, Ordering},
         mpsc::{Receiver, channel},
     },
@@ -19,6 +19,7 @@ use std::{
 use storage_backend::storage::Storage;
 use tokio::runtime::{Handle, Runtime};
 use tracing::{debug, error, info, warn};
+use tracing_subscriber::EnvFilter;
 
 use crate::{
     dispatcher_error::DispatcherError,
@@ -228,4 +229,25 @@ pub fn dispatcher_loop(
     }
 
     Ok(())
+}
+
+static INIT: Once = Once::new();
+
+pub fn init_trace() {
+    INIT.call_once(|| {
+        config_trace_aux();
+    });
+}
+
+fn config_trace_aux() {
+    let default_modules = ["info", "tarpc=off"];
+
+    let filter = EnvFilter::builder()
+        .parse(default_modules.join(","))
+        .expect("Invalid filter");
+
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_env_filter(filter)
+        .init();
 }

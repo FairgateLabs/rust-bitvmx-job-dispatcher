@@ -133,7 +133,7 @@ impl Dispatcher {
     }
 
     pub fn add_job(&mut self, context: JobContext) -> Result<(), DispatcherError> {
-         let output_file_path = match context
+        let output_file_path = match context
             .download_bucket
             .get(&format!("output_{}.json", context.job_id))
         {
@@ -206,11 +206,13 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
 
-        let instances = run_response
-            .instances();
+        let instances = run_response.instances();
 
         if instances.len() != 1 {
-            error!("Expected to launch 1 instance, but launched {}", instances.len());
+            error!(
+                "Expected to launch 1 instance, but launched {}",
+                instances.len()
+            );
             return Err(DispatcherError::InstanceLaunchFailed);
         }
 
@@ -321,7 +323,10 @@ impl Dispatcher {
         info!("Instance terminated");
 
         tx.send(())?;
-        info!("Sent completion signal for job ID: {} on instance ID: {}", context.job_id, instance_id);
+        info!(
+            "Sent completion signal for job ID: {} on instance ID: {}",
+            context.job_id, instance_id
+        );
         Ok(())
     }
 
@@ -382,7 +387,10 @@ impl Dispatcher {
             }
 
             if time.elapsed() > Duration::from_secs(300) {
-                error!("Instance {} did not reach 'running' state within 5 minutes", instance_id);
+                error!(
+                    "Instance {} did not reach 'running' state within 5 minutes",
+                    instance_id
+                );
                 return Err(DispatcherError::InstanceTimeout);
             }
 
@@ -430,7 +438,10 @@ impl Dispatcher {
                 }
 
                 if time.elapsed() > Duration::from_secs(300) {
-                    error!("Instance {} did not reach 'running' state within 5 minutes", instance_id);
+                    error!(
+                        "Instance {} did not reach 'running' state within 5 minutes",
+                        instance_id
+                    );
                     return Err(DispatcherError::InstanceTimeout);
                 }
 
@@ -468,7 +479,10 @@ impl Dispatcher {
             }
             debug!("SSM status is not online yet, waiting...");
             if time.elapsed() > Duration::from_secs(300) {
-                error!("Instance {} did not reach 'online' state within 5 minutes", instance_id);
+                error!(
+                    "Instance {} did not reach 'online' state within 5 minutes",
+                    instance_id
+                );
                 return Err(DispatcherError::InstanceTimeout);
             }
             sleep(Duration::from_secs(1)).await;
@@ -558,7 +572,11 @@ impl Dispatcher {
                         );
                     }
                     _ => {
-                        error!("Command execution failed with status: {:?}, result: {:?}", status, inv.standard_error_content());
+                        error!(
+                            "Command execution failed with status: {:?}, result: {:?}",
+                            status,
+                            inv.standard_error_content()
+                        );
                         return Err(DispatcherError::CommandExecutionFailed);
                     }
                 },
@@ -688,16 +706,15 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod tests {
+    use crate::init_trace;
+
     use super::*;
     use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
     use aws_sdk_ec2::Client as Ec2Client;
-    use tracing_subscriber::{
-        EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
-    };
 
     #[tokio::test]
     async fn test_connects_to_aws_ec2() {
-        init_trace().unwrap();
+        init_trace();
 
         let region_provider = RegionProviderChain::default_provider().or_else("us-east-2");
 
@@ -723,7 +740,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_functions() {
-        init_trace().unwrap();
+        init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
@@ -796,7 +813,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_job_finished_for_inexistent_instance_id() {
-        init_trace().unwrap();
+        init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
@@ -820,7 +837,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_job_finished_for_unfinished_job() {
-        init_trace().unwrap();
+        init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
@@ -861,7 +878,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_job_finished_for_corrupt_file() {
-        init_trace().unwrap();
+        init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
@@ -913,7 +930,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_job_finished_successful() {
-        init_trace().unwrap();
+        init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
         let dispatcher = Dispatcher::new(config_path.clone()).await.unwrap();
@@ -963,17 +980,5 @@ mod tests {
             .terminate_instance(&ec2_client, &instance_id)
             .await
             .unwrap();
-    }
-
-    fn init_trace() -> Result<(), anyhow::Error> {
-        let filter = EnvFilter::builder()
-            .parse("info,tarpc=off")
-            .expect("Invalid filter");
-
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-            .try_init()?;
-        Ok(())
     }
 }

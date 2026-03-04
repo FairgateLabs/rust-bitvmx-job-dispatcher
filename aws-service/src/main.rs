@@ -1,5 +1,5 @@
 use anyhow::Result;
-use bitvmx_aws_job_dispatcher::dispatcher_loop;
+use bitvmx_aws_job_dispatcher::{dispatcher_loop, init_trace};
 use bitvmx_broker::{
     channel::channel::DualChannel,
     identification::allow_list::AllowList,
@@ -10,7 +10,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     rc::Rc,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, Once,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -18,9 +18,7 @@ use storage_backend::{storage::Storage, storage_config::StorageConfig};
 
 use clap::Parser;
 use tracing::{error, info};
-use tracing_subscriber::{
-    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
-};
+use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(about = "Emulator Dispatcher CLI", long_about = None)]
@@ -50,21 +48,8 @@ struct Command {
     storage_path: String,
 }
 
-fn init_trace() -> Result<(), anyhow::Error> {
-    let filter = EnvFilter::builder()
-        .parse("info,tarpc=off") // Include everything at "info" except `libp2p`
-        .expect("Invalid filter");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-        .try_init()?;
-
-    Ok(())
-}
-
 fn main() -> Result<(), anyhow::Error> {
-    init_trace()?;
+    init_trace();
     let args = Command::parse();
 
     info!("Starting...");
