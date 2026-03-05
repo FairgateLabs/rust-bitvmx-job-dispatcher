@@ -24,7 +24,7 @@ pub fn remove_storage_path(storage_path: &str) {
     // clean up the test’s storage file
     info!("Cleaning up storage file: {}", storage_path);
     if path::Path::new(&storage_path).exists() {
-        fs::remove_dir(&storage_path)
+        fs::remove_dir_all(&storage_path)
             .unwrap_or_else(|e| error!("Warning: could not remove storage file: {e}"))
     }
 }
