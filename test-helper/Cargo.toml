@@ -6,3 +6,5 @@ edition = "2024"
 [dependencies]
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.5.1" }
+anyhow = "1.0.95"

@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, Ipv4Addr},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     thread,
     time::Duration,
@@ -12,17 +12,14 @@ use std::{
 use anyhow::Result;
 use bitvmx_broker::{
     channel::channel::DualChannel,
-    identification::{allow_list::AllowList, routing::RoutingTable},
-    rpc::{sync_server::BrokerSync, tls_helper::Cert, BrokerConfig},
+    identification::allow_list::AllowList,
+    rpc::{tls_helper::Cert, BrokerConfig},
 };
 
 use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
 use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
-use test_helper::test_helper::{get_storage_path, remove_storage_file};
+use test_helper::test_helper::{get_storage_path, init_server, init_trace, remove_storage_path};
 use tracing::info;
-use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
-};
 
 use crate::challenge::Paths;
 
@@ -34,7 +31,7 @@ const PORT: u16 = 10300;
 #[test]
 fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
     std::env::set_current_dir("..").unwrap();
-    init_trace()?;
+    init_trace();
     let storage_path = get_storage_path();
     {
         let mut server_handler = init_server(PORT)?;
@@ -70,18 +67,6 @@ fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
         }
     }
     remove_storage_path(&storage_path);
-    Ok(())
-}
-
-fn init_trace() -> Result<(), anyhow::Error> {
-    let filter = EnvFilter::builder()
-        .parse("info,tarpc=off") // Include everything at "info"
-        .expect("Invalid filter");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-        .try_init()?;
     Ok(())
 }
 
@@ -124,22 +109,4 @@ fn start_challenge(port: u16) -> Result<thread::JoinHandle<()>, anyhow::Error> {
         challenge::emulator::run_job(path, port).unwrap();
     });
     Ok(handle)
-}
-
-fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
-    let privk = fs::read_to_string("test_cert/services.key").unwrap();
-    let cert = Cert::new_with_privk(&privk).unwrap();
-    let allow_list =
-        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]).unwrap();
-    let routing = RoutingTable::new();
-    routing.lock().unwrap().allow_all();
-    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap());
-
-    let storage = Arc::new(Mutex::new(
-        bitvmx_broker::broker_memstorage::MemStorage::new(),
-    ));
-
-    let server =
-        BrokerSync::new(&config, storage.clone(), cert, allow_list.clone(), routing).unwrap();
-    Ok(server)
 }
