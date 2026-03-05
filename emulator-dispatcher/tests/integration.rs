@@ -1,7 +1,6 @@
 use std::{
     fs,
     net::{IpAddr, Ipv4Addr},
-    path,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -19,7 +18,8 @@ use bitvmx_broker::{
 
 use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
 use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
-use tracing::{error, info};
+use test_helper::test_helper::{get_storage_path, remove_storage_file};
+use tracing::info;
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
@@ -36,30 +36,38 @@ fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
     std::env::set_current_dir("..").unwrap();
     init_trace()?;
     let storage_path = get_storage_path();
-    let mut server_handler = init_server(PORT)?;
-    let running_dispatcher = Arc::new(AtomicBool::new(true));
-    let _emulator_handler = start_emulator(running_dispatcher.clone(), storage_path.to_string())?;
-    let challenge_handler = start_challenge(PORT)?;
-    std::thread::sleep(std::time::Duration::from_secs(9));
+    {
+        let mut server_handler = init_server(PORT)?;
+        let running_dispatcher = Arc::new(AtomicBool::new(true));
+        let emulator_handler =
+            start_emulator(running_dispatcher.clone(), storage_path.to_string())?;
+        let challenge_handler = start_challenge(PORT)?;
+        std::thread::sleep(std::time::Duration::from_secs(9));
 
-    info!("⛔ Shutting down dispatcher...");
-    running_dispatcher.store(false, Ordering::SeqCst);
-    std::thread::sleep(std::time::Duration::from_secs(5));
+        info!("⛔ Shutting down dispatcher...");
+        running_dispatcher.store(false, Ordering::SeqCst);
+        if let Err(msg) = emulator_handler.join().unwrap() {
+            assert!(
+                msg.contains("Expected"),
+                "Emulator crashed unexpectedly: {msg}"
+            );
+        }
 
-    info!("🔄 Restarting emulator...");
-    let running_dispatcher = Arc::new(AtomicBool::new(true));
-    let emulator_handler = start_emulator(running_dispatcher.clone(), storage_path.clone())?;
-    info!("✅ Emulator restarted");
+        info!("🔄 Restarting emulator...");
+        let running_dispatcher = Arc::new(AtomicBool::new(true));
+        let emulator_handler = start_emulator(running_dispatcher.clone(), storage_path.clone())?;
+        info!("✅ Emulator restarted");
 
-    challenge_handler.join().unwrap();
-    info!("Challenge finished, shutting everything down...");
-    server_handler.close();
-    running_dispatcher.store(false, Ordering::SeqCst);
-    if let Err(msg) = emulator_handler.join().unwrap() {
-        assert!(
-            msg.contains("Expected"),
-            "Emulator crashed unexpectedly: {msg}"
-        );
+        challenge_handler.join().unwrap();
+        info!("Challenge finished, shutting everything down...");
+        server_handler.close();
+        running_dispatcher.store(false, Ordering::SeqCst);
+        if let Err(msg) = emulator_handler.join().unwrap() {
+            assert!(
+                msg.contains("Expected"),
+                "Emulator crashed unexpectedly: {msg}"
+            );
+        }
     }
     remove_storage_file(&storage_path);
     Ok(())
@@ -75,23 +83,6 @@ fn init_trace() -> Result<(), anyhow::Error> {
         .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
         .try_init()?;
     Ok(())
-}
-
-fn get_storage_path() -> String {
-    let storage_path = format!("../temp-runs/storage_job_{}.db", std::process::id());
-    if path::Path::new(&storage_path).exists() {
-        fs::remove_file(&storage_path)
-            .unwrap_or_else(|e| error!("Warning: could not remove old storage file: {e}"));
-    }
-    storage_path
-}
-
-fn remove_storage_file(storage_path: &str) {
-    // clean up the test’s storage file
-    if path::Path::new(&storage_path).exists() {
-        fs::remove_file(&storage_path)
-            .unwrap_or_else(|e| error!("Warning: could not remove storage file: {e}"))
-    }
 }
 
 fn start_emulator(
@@ -119,6 +110,7 @@ fn start_emulator(
         {
             return Err(format!("dispatcher error: {e}"));
         }
+        info!("Dispatcher loop exited normally");
 
         Err("Expected abrupt end".to_string())
     });
