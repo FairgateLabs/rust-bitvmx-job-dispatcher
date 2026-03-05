@@ -23,7 +23,7 @@ pub mod prover {
 
     pub(crate) fn run_job(port: u16) -> Result<(), anyhow::Error> {
         info!("Starting ping example...");
-        let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key")?;
+        let privk = fs::read_to_string("../test_cert/services.key")?;
         let my_id = 2;
         let dest_id = 1;
         let cert = Cert::new_with_privk(&privk)?;

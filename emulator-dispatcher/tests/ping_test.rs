@@ -90,7 +90,7 @@ fn start_emulator(
     let handle = thread::spawn(move || {
         let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let my_id = 1;
-        let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key").unwrap();
+        let privk = fs::read_to_string("../test_cert/services.key").unwrap();
 
         let cert = Cert::new_with_privk(&privk).unwrap();
         let allow_list =
@@ -124,7 +124,7 @@ fn start_ping(port: u16) -> Result<thread::JoinHandle<()>, anyhow::Error> {
 }
 
 fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
-    let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key").unwrap();
+    let privk = fs::read_to_string("../test_cert/services.key").unwrap();
     let cert = Cert::new_with_privk(&privk).unwrap();
     let allow_list =
         AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]).unwrap();

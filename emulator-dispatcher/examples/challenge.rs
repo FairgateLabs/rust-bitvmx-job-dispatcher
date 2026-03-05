@@ -23,7 +23,7 @@ pub(crate) struct Paths {
 impl Paths {
     pub fn new(path_corrector: &str) -> Self {
         Self {
-            privk: format!("{}../rust-bitvmx-broker/certs/services.key", path_corrector),
+            privk: format!("{}test_cert/services.key", path_corrector),
             yaml_path: format!(
                 "{}../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml",
                 path_corrector
