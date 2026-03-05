@@ -1,6 +1,7 @@
 use std::{process::Child, rc::Rc};
 
 use bitvmx_broker::identification::identifier::Identifier;
+use bitvmx_dispatcher_utils::Msg;
 use serde::de::DeserializeOwned;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::info;
@@ -9,7 +10,7 @@ use crate::{
     dispatcher_error::DispatcherError,
     dispatcher_message::DispatcherMessage,
     dispatcher_module::{Dispatcher, JobContext},
-    helper::{job_key, process_msg, Msg},
+    helper::{job_key, process_msg},
 };
 
 /// Persists and restores jobs from Storage.

@@ -1,26 +1,23 @@
-use std::{
-    fs,
-    net::{IpAddr, Ipv4Addr},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
-
 use anyhow::Result;
+use bitvmx_aws_job_dispatcher::{dispatcher_loop, init_trace};
 use bitvmx_broker::{
     channel::channel::DualChannel,
     identification::allow_list::AllowList,
-    rpc::{tls_helper::Cert, BrokerConfig},
+    rpc::{BrokerConfig, tls_helper::Cert},
 };
+use std::{
+    fs,
+    net::{IpAddr, Ipv4Addr},
+    rc::Rc,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+use storage_backend::{storage::Storage, storage_config::StorageConfig};
 
-use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
-use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
 use clap::Parser;
-use tracing::info;
-use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
-};
+use tracing::{error, info};
 
 #[derive(Parser)]
 #[command(about = "Emulator Dispatcher CLI", long_about = None)]
@@ -50,24 +47,12 @@ struct Command {
     storage_path: String,
 }
 
-fn init_trace() -> Result<(), anyhow::Error> {
-    let filter = EnvFilter::builder()
-        .parse("info,tarpc=off") // Include everything at "info" except `libp2p`
-        .expect("Invalid filter");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-        .try_init()?;
-
-    Ok(())
-}
-
 fn main() -> Result<(), anyhow::Error> {
-    init_trace()?;
+    init_trace();
     let args = Command::parse();
 
     info!("Starting...");
+    let rt = Arc::new(Mutex::new(tokio::runtime::Runtime::new()?));
 
     let ip = args
         .ip
@@ -86,7 +71,9 @@ fn main() -> Result<(), anyhow::Error> {
 
     let config: BrokerConfig =
         BrokerConfig::new(args.port, Some(IpAddr::from(ip)), args.broker_pubk_hash);
-    let channel = DualChannel::new(&config, cert, Some(my_id), allow_list)?;
+    let channel =
+        DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt.clone())?;
+
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));
@@ -97,8 +84,21 @@ fn main() -> Result<(), anyhow::Error> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    let storage = get_storage_with_path(&args.storage_path)?;
-    dispatcher_loop::<ProverJobType>(channel, check_interval, running, storage)?;
+    let storage_config = StorageConfig::new(args.storage_path, None);
+    let storage = Rc::new(Storage::new(&storage_config)?);
+
+    dispatcher_loop(
+        channel,
+        check_interval,
+        running,
+        rt,
+        storage,
+        "./config.yaml".to_string(),
+    )
+    .map_err(|e| {
+        error!("Dispatcher loop error: {}", e);
+        e
+    })?;
 
     info!("Shutting down...");
 

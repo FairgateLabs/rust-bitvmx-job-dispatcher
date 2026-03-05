@@ -5,5 +5,7 @@ members = [
     "dispatcher",
     "risczero-dispatcher",
     "emulator-dispatcher",
-    "jobtypes",
+    "jobtypes", 
+    "aws-service", 
+    "dispatcher-utils",
 ]

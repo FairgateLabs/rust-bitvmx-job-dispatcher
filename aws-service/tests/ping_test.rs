@@ -1,10 +1,10 @@
 use std::{
     fs,
     net::{IpAddr, Ipv4Addr},
-    path,
+    rc::Rc,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     thread,
     time::Duration,
@@ -14,18 +14,18 @@ use anyhow::Result;
 use bitvmx_broker::{
     channel::channel::DualChannel,
     identification::{allow_list::AllowList, routing::RoutingTable},
-    rpc::{sync_server::BrokerSync, tls_helper::Cert, BrokerConfig},
+    rpc::{BrokerConfig, sync_server::BrokerSync, tls_helper::Cert},
 };
 
-use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
-use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
-use tracing::{error, info};
+use bitvmx_aws_job_dispatcher::dispatcher_loop;
+use storage_backend::storage::Storage;
+use tokio::runtime::Runtime;
+use tracing::{debug, info};
 use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
+    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
-use crate::ping::Paths;
-#[path = "../examples/ping.rs"]
+#[path = "../examples/aws_ping.rs"]
 mod ping;
 
 const PORT: u16 = 10300;
@@ -33,24 +33,22 @@ const PORT: u16 = 10300;
 #[test]
 fn test_dispatcher_ping() -> Result<(), anyhow::Error> {
     init_trace()?;
-    let storage_path = get_storage_path();
     let mut server_handler = init_server(PORT)?;
     let running_dispatcher = Arc::new(AtomicBool::new(true));
-    let emulator_handler = start_emulator(running_dispatcher.clone(), storage_path.to_string())?;
-    let challenge_handler = start_ping(PORT)?;
+    let dispatcher_handler = start_dispatcher(running_dispatcher.clone())?;
+    let ping_handler = start_ping(PORT);
     std::thread::sleep(std::time::Duration::from_secs(9));
 
-    challenge_handler.join().unwrap();
+    ping_handler.join().unwrap()?;
     info!("Ping finished, shutting everything down...");
     server_handler.close();
     running_dispatcher.store(false, Ordering::SeqCst);
-    if let Err(msg) = emulator_handler.join().unwrap() {
+    if let Err(msg) = dispatcher_handler.join().unwrap() {
         assert!(
             msg.contains("Expected"),
-            "Emulator crashed unexpectedly: {msg}"
+            "Dispatcher crashed unexpectedly: {msg}"
         );
     }
-    remove_storage_file(&storage_path);
     Ok(())
 }
 
@@ -66,27 +64,10 @@ fn init_trace() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn get_storage_path() -> String {
-    let storage_path = format!("../temp-runs/storage_job_{}.db", std::process::id());
-    if path::Path::new(&storage_path).exists() {
-        fs::remove_file(&storage_path)
-            .unwrap_or_else(|e| error!("Warning: could not remove old storage file: {e}"));
-    }
-    storage_path
-}
-
-fn remove_storage_file(storage_path: &str) {
-    // clean up the test’s storage file
-    if path::Path::new(&storage_path).exists() {
-        fs::remove_file(&storage_path)
-            .unwrap_or_else(|e| error!("Warning: could not remove storage file: {e}"))
-    }
-}
-
-fn start_emulator(
+fn start_dispatcher(
     running: Arc<AtomicBool>,
-    storage_path: String,
 ) -> Result<thread::JoinHandle<Result<(), String>>, anyhow::Error> {
+    let rt = Arc::new(Mutex::new(Runtime::new().unwrap()));
     let handle = thread::spawn(move || {
         let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
         let my_id = 1;
@@ -98,14 +79,28 @@ fn start_emulator(
                 .unwrap();
 
         let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap());
+        // let channel =
+        //     DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt.clone())
+        //         .unwrap();
         let channel = DualChannel::new(&config, cert, Some(my_id), allow_list).unwrap();
 
         let check_interval = Duration::from_secs(1);
+        debug!("Starting dispatcher loop (Test)");
+        let storage_config = storage_backend::storage_config::StorageConfig::new(
+            "temp-runs/storage_ping_test.db".to_string(),
+            None,
+        );
+        let storage =
+            Rc::new(Storage::new(&storage_config).map_err(|e| format!("Storage init error: {e}"))?);
 
-        let storage = get_storage_with_path(&storage_path).unwrap();
-        if let Err(e) =
-            dispatcher_loop::<EmulatorJobType>(channel, check_interval, running, storage)
-        {
+        if let Err(e) = dispatcher_loop(
+            channel,
+            check_interval,
+            running,
+            rt.clone(),
+            storage,
+            "config/config.yaml".to_string(),
+        ) {
             return Err(format!("dispatcher error: {e}"));
         }
 
@@ -115,12 +110,9 @@ fn start_emulator(
     Ok(handle)
 }
 
-fn start_ping(port: u16) -> Result<thread::JoinHandle<()>, anyhow::Error> {
-    let path = Paths::new("../");
-    let handle = thread::spawn(move || {
-        ping::emulator::run_job(path, port).unwrap();
-    });
-    Ok(handle)
+fn start_ping(port: u16) -> thread::JoinHandle<Result<(), anyhow::Error>> {
+    let handle = thread::spawn(move || ping::prover::run_job(port));
+    handle
 }
 
 fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
