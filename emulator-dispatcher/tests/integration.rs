@@ -69,7 +69,7 @@ fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
             );
         }
     }
-    remove_storage_file(&storage_path);
+    remove_storage_path(&storage_path);
     Ok(())
 }
 
