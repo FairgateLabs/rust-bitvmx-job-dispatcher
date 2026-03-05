@@ -61,7 +61,7 @@ fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
             "Emulator crashed unexpectedly: {msg}"
         );
     }
-    remove_storage_file(&storage_path);
+    remove_storage_path(&storage_path);
     Ok(())
 }
 
@@ -78,19 +78,20 @@ fn init_trace() -> Result<(), anyhow::Error> {
 }
 
 fn get_storage_path() -> String {
-    let storage_path = format!("../temp-runs/storage_job_{}.db", std::process::id());
+    let storage_path = format!("temp-runs/storage_job_{}.db", std::process::id());
     if path::Path::new(&storage_path).exists() {
-        fs::remove_file(&storage_path)
-            .unwrap_or_else(|e| error!("Warning: could not remove old storage file: {e}"));
+        fs::remove_dir_all(&storage_path)
+            .unwrap_or_else(|e| error!("Warning: could not remove old storage path: {e}"));
     }
     storage_path
 }
 
-fn remove_storage_file(storage_path: &str) {
+fn remove_storage_path(storage_path: &str) {
     // clean up the test’s storage file
+    info!("Removing directory {storage_path}");
     if path::Path::new(&storage_path).exists() {
-        fs::remove_file(&storage_path)
-            .unwrap_or_else(|e| error!("Warning: could not remove storage file: {e}"))
+        fs::remove_dir_all(&storage_path)
+            .unwrap_or_else(|e| error!("Warning: could not remove storage path: {e}"))
     }
 }
 
