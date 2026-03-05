@@ -18,6 +18,7 @@ use std::{
 
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
 
+use bitvmx_dispatcher_utils::{Msg, PingMessage};
 use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
 use dispatcher_module::{Dispatcher, JobContext};
@@ -28,7 +29,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     dispatcher_error::DispatcherError,
-    helper::{persist_job, process_msg, Msg, PingMessage},
+    helper::{persist_job, process_msg},
 };
 
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
