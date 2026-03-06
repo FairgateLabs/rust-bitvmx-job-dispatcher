@@ -237,7 +237,7 @@ where
     let worker_handler = start_worker(running.clone(), storage_path.clone())?;
     let challenge_handler = start_challenge(PORT);
 
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(12));
 
     info!("⛔ Shutting down worker...");
     running.store(false, Ordering::SeqCst);
@@ -249,7 +249,7 @@ where
         );
     }
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(4));
 
     info!("🔄 Restarting worker...");
     let running = Arc::new(AtomicBool::new(true));

@@ -100,4 +100,17 @@ where
             ))
         }
     }
+
+    pub fn is_expected_type(&self, job_id: &str, buf: &str) -> bool {
+        if let Some(job_type) = self.get_job_type(job_id) {
+            let jobtype = job_type.message_type();
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(buf) {
+                parsed.get("type") == Some(&serde_json::Value::String(jobtype))
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
 }
