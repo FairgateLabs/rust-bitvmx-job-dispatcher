@@ -1,7 +1,5 @@
+use test_helper::test_helper::{init_trace, Paths};
 use tracing::error;
-use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
-};
 
 // To make this example work, you need to:
 // 1. go to ../BitVMX-CPU and run cargo build --release
@@ -11,66 +9,20 @@ use tracing_subscriber::{
 //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1
 // 4. Then trigger one execution
 //      cargo run --release --example challenge --features "emulator"
-
-pub(crate) struct Paths {
-    pub privk: String,
-    pub yaml_path: String,
-    pub checkpoint_prover_base: String,
-    pub checkpoint_verifier_base: String,
-    pub commands_file: String,
-}
-
-impl Paths {
-    pub fn new(path_corrector: &str) -> Self {
-        Self {
-            privk: format!("{}test_cert/services.key", path_corrector),
-            yaml_path: format!(
-                "{}../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml",
-                path_corrector
-            ),
-            checkpoint_prover_base: format!("{}temp-runs/challenge/prover/", path_corrector),
-            checkpoint_verifier_base: format!("{}temp-runs/challenge/verifier/", path_corrector),
-            commands_file: format!("{}temp-runs/commands.json", path_corrector),
-        }
-    }
-}
 pub mod emulator {
-    use super::Paths;
-    use bitvmx_broker::identification::identifier::Identifier;
-    use bitvmx_broker::rpc::tls_helper::Cert;
-    use bitvmx_broker::rpc::BrokerConfig;
-    use bitvmx_broker::{channel::channel::DualChannel, identification::allow_list::AllowList};
+    use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_cpu_definitions::challenge::{EmulatorResultType, ProverFinalTraceType};
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
     use emulator::executor::utils::FailConfiguration;
-    use std::net::Ipv4Addr;
-    use std::{fs, net::IpAddr, thread::sleep, time::Duration};
+    use test_helper::test_helper::{configure_example_broker, wait_for_result, Paths};
+
     use tracing::info;
 
     pub(crate) fn run_job(paths: Paths, port: u16) -> Result<(), anyhow::Error> {
         info!("Starting challenge example...");
-        let privk = fs::read_to_string(paths.privk)?;
-        let my_id = 2;
-        let dest_id = 1;
-        let cert = Cert::new_with_privk(&privk)?;
-        let allow_list =
-            AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
-        let emulator_id = Identifier {
-            pubkey_hash: cert.get_pubk_hash()?,
-            id: dest_id,
-        };
 
-        let channel = DualChannel::new(
-            &BrokerConfig::new(
-                port,
-                Some(IpAddr::from([127, 0, 0, 1])),
-                cert.get_pubk_hash()?,
-            ),
-            cert,
-            Some(my_id),
-            allow_list,
-        )?;
+        let (channel, emulator_id) = configure_example_broker(&paths, port)?;
 
         let input = 17;
         let input = vec![17, 17, 17, input];
@@ -98,7 +50,8 @@ pub mod emulator {
         channel.send(&emulator_id.clone(), msg)?;
 
         info!("Starting emulator job...");
-        let (prover_result, job_id) = wait_for_result(&channel, "ProverExecuteResult", 20, 1)?;
+        let (prover_result, job_id) =
+            wait_for_typed_result(&channel, "ProverExecuteResult", 20, 1)?;
         let (step, hash, halt) =
             EmulatorResultType::from_value(prover_result)?.as_prover_execute()?;
 
@@ -124,7 +77,7 @@ pub mod emulator {
         channel.send(&emulator_id.clone(), msg)?;
 
         let (verifier_result, job_id) =
-            wait_for_result(&channel, "VerifierCheckExecutionResult", 20, 1)?;
+            wait_for_typed_result(&channel, "VerifierCheckExecutionResult", 20, 1)?;
         let step = EmulatorResultType::from_value(verifier_result)?.as_verifier_check()?;
         info!("✅ Checked verifier result with last step {:?}", step);
         info!("with job_id {}", job_id);
@@ -147,7 +100,7 @@ pub mod emulator {
             channel.send(&emulator_id.clone(), msg)?;
 
             let (prover_hashes_result, job_id) =
-                wait_for_result(&channel, "ProverGetHashesForRoundResult", 20, 1)?;
+                wait_for_typed_result(&channel, "ProverGetHashesForRoundResult", 20, 1)?;
             let (hashes, mut my_round): (Vec<String>, u8) =
                 EmulatorResultType::from_value(prover_hashes_result)?.as_prover_hashes()?;
             info!("✅ Got prover hashes: {:?}, round: {:?}", hashes, my_round);
@@ -168,7 +121,7 @@ pub mod emulator {
             channel.send(&emulator_id.clone(), msg)?;
 
             let (verifier_choose_segment_result, job_id) =
-                wait_for_result(&channel, "VerifierChooseSegmentResult", 20, 1)?;
+                wait_for_typed_result(&channel, "VerifierChooseSegmentResult", 20, 1)?;
             (v_decision, my_round) =
                 EmulatorResultType::from_value(verifier_choose_segment_result)?.as_v_decision()?;
             info!(
@@ -190,7 +143,8 @@ pub mod emulator {
         })?;
         channel.send(&emulator_id.clone(), msg)?;
 
-        let (final_trace, job_id) = wait_for_result(&channel, "ProverFinalTraceResult", 20, 1)?;
+        let (final_trace, job_id) =
+            wait_for_typed_result(&channel, "ProverFinalTraceResult", 20, 1)?;
         let final_trace = EmulatorResultType::from_value(final_trace)?.as_final_trace()?;
 
         info!("✅ Got prover final trace: {:?}", final_trace);
@@ -222,7 +176,7 @@ pub mod emulator {
                 channel.send(&emulator_id, msg)?;
 
                 let (result, job_id) =
-                    wait_for_result(&channel, "VerifierChooseChallengeResult", 20, 1)?;
+                    wait_for_typed_result(&channel, "VerifierChooseChallengeResult", 20, 1)?;
                 let challenge = EmulatorResultType::from_value(result)?.as_challenge()?;
                 info!("✅ Got verifier choose challenge: {:?}", challenge);
                 info!("with job_id {}", job_id);
@@ -231,33 +185,25 @@ pub mod emulator {
         Ok(())
     }
 
-    fn wait_for_result(
+    fn wait_for_typed_result(
         channel: &DualChannel,
         expected_type: &str,
         max_attempts: usize,
         delay_secs: u64,
     ) -> Result<(serde_json::Value, String), anyhow::Error> {
-        for _ in 0..max_attempts {
-            if let Some((msg, _from)) = channel.recv()? {
-                info!("Received message: {}", msg);
-                let msg = serde_json::from_str::<ResultMessage>(&msg)?;
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&msg.result) {
-                    if json["type"] == expected_type {
-                        return Ok((json, msg.job_id));
-                    }
-                } else {
-                    info!("Received unstructured result: {}", msg.result);
+        wait_for_result(channel, max_attempts, delay_secs, |msg| {
+            let msg = serde_json::from_str::<ResultMessage>(msg)?;
+
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&msg.result) {
+                if json["type"] == expected_type {
+                    return Ok(Some((json, msg.job_id)));
                 }
             } else {
-                info!("Waiting result execution");
-                sleep(Duration::from_secs(delay_secs));
+                info!("Received unstructured result: {}", msg.result);
             }
-        }
 
-        Err(anyhow::anyhow!(
-            "Timeout: did not receive expected result '{}'",
-            expected_type
-        ))
+            Ok(None)
+        })
     }
 
     pub fn get_total_rounds(pdf: &str) -> u8 {
@@ -283,21 +229,9 @@ pub mod emulator {
 
 #[allow(dead_code)]
 fn main() {
-    init_trace().unwrap();
+    init_trace();
     let paths = Paths::new("");
     if let Err(e) = emulator::run_job(paths, 10000) {
         error!("Error: {}", e);
     }
-}
-
-fn init_trace() -> Result<(), anyhow::Error> {
-    let filter = EnvFilter::builder()
-        .parse("info,tarpc=off") // Include everything at "info"
-        .expect("Invalid filter");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-        .try_init()?;
-    Ok(())
 }

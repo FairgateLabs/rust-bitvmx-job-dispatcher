@@ -1,55 +1,31 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    thread,
-};
-
+use crate::common::start_emulator;
 use anyhow::Result;
-
-use test_helper::test_helper::{get_storage_path, init_server, init_trace, remove_storage_path};
-use tracing::info;
-
-use crate::{common::start_emulator, ping::Paths};
+use std::thread;
+use test_helper::test_helper::{get_storage_path, init_trace, run_ping_flow, Paths};
 #[path = "../examples/ping.rs"]
 mod ping;
 
 mod common;
 
-const PORT: u16 = 10300;
-
 #[test]
 fn test_dispatcher_ping() -> Result<(), anyhow::Error> {
+    std::env::set_current_dir("..").unwrap();
     init_trace();
-    let storage_path = get_storage_path();
-    {
-        let mut server_handler = init_server(PORT)?;
-        let running_dispatcher = Arc::new(AtomicBool::new(true));
-        let emulator_handler =
-            start_emulator(running_dispatcher.clone(), storage_path.to_string())?;
-        let challenge_handler = start_ping(PORT)?;
-        std::thread::sleep(std::time::Duration::from_secs(9));
 
-        challenge_handler.join().unwrap();
-        info!("Ping finished, shutting everything down...");
-        server_handler.close();
-        running_dispatcher.store(false, Ordering::SeqCst);
-        if let Err(msg) = emulator_handler.join().unwrap() {
-            assert!(
-                msg.contains("Expected"),
-                "Emulator crashed unexpectedly: {msg}"
-            );
-        }
-    }
-    remove_storage_path(&storage_path);
-    Ok(())
+    let storage_path = get_storage_path();
+
+    run_ping_flow(
+        storage_path,
+        |running, storage| start_emulator(running, storage),
+        |port| start_ping(port),
+    )
 }
 
-fn start_ping(port: u16) -> Result<thread::JoinHandle<()>, anyhow::Error> {
-    let path = Paths::new("../");
-    let handle = thread::spawn(move || {
-        ping::emulator::run_job(path, port).unwrap();
-    });
-    Ok(handle)
+fn start_ping(port: u16) -> thread::JoinHandle<Result<(), anyhow::Error>> {
+    let path = Paths::new("");
+
+    thread::spawn(move || {
+        ping::emulator::run_job(path, port)?;
+        Ok(())
+    })
 }

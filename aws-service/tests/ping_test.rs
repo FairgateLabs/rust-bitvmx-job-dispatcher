@@ -1,134 +1,28 @@
-use std::{
-    fs,
-    net::{IpAddr, Ipv4Addr},
-    rc::Rc,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread,
-    time::Duration,
-};
-
+use crate::common::start_dispatcher;
 use anyhow::Result;
-use bitvmx_broker::{
-    channel::channel::DualChannel,
-    identification::{allow_list::AllowList, routing::RoutingTable},
-    rpc::{BrokerConfig, sync_server::BrokerSync, tls_helper::Cert},
-};
+use std::thread;
+use test_helper::test_helper::{get_storage_path, init_trace, run_ping_flow};
 
-use bitvmx_aws_job_dispatcher::dispatcher_loop;
-use storage_backend::storage::Storage;
-use tokio::runtime::Runtime;
-use tracing::{debug, info};
-use tracing_subscriber::{
-    EnvFilter, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt,
-};
-
+mod common;
 #[path = "../examples/aws_ping.rs"]
 mod ping;
 
-const PORT: u16 = 10300;
-
 #[test]
-fn test_dispatcher_ping() -> Result<(), anyhow::Error> {
-    init_trace()?;
-    let mut server_handler = init_server(PORT)?;
-    let running_dispatcher = Arc::new(AtomicBool::new(true));
-    let dispatcher_handler = start_dispatcher(running_dispatcher.clone())?;
-    let ping_handler = start_ping(PORT);
-    std::thread::sleep(std::time::Duration::from_secs(9));
+fn test_aws_ping() -> Result<(), anyhow::Error> {
+    init_trace();
+    std::env::set_current_dir("..").unwrap();
 
-    ping_handler.join().unwrap()?;
-    info!("Ping finished, shutting everything down...");
-    server_handler.close();
-    running_dispatcher.store(false, Ordering::SeqCst);
-    if let Err(msg) = dispatcher_handler.join().unwrap() {
-        assert!(
-            msg.contains("Expected"),
-            "Dispatcher crashed unexpectedly: {msg}"
-        );
-    }
-    Ok(())
-}
+    let storage_path = get_storage_path();
+    let config_path = "aws-service/config/config.yaml".to_string();
 
-fn init_trace() -> Result<(), anyhow::Error> {
-    let filter = EnvFilter::builder()
-        .parse("info,tarpc=off") // Include everything at "info"
-        .expect("Invalid filter");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-        .try_init()?;
-    Ok(())
-}
-
-fn start_dispatcher(
-    running: Arc<AtomicBool>,
-) -> Result<thread::JoinHandle<Result<(), String>>, anyhow::Error> {
-    let rt = Arc::new(Mutex::new(Runtime::new().unwrap()));
-    let handle = thread::spawn(move || {
-        let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
-        let my_id = 1;
-        let privk = fs::read_to_string("../test_cert/services.key").unwrap();
-
-        let cert = Cert::new_with_privk(&privk).unwrap();
-        let allow_list =
-            AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
-                .unwrap();
-
-        let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap());
-        // let channel =
-        //     DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt.clone())
-        //         .unwrap();
-        let channel = DualChannel::new(&config, cert, Some(my_id), allow_list).unwrap();
-
-        let check_interval = Duration::from_secs(1);
-        debug!("Starting dispatcher loop (Test)");
-        let storage_config = storage_backend::storage_config::StorageConfig::new(
-            "temp-runs/storage_ping_test.db".to_string(),
-            None,
-        );
-        let storage =
-            Rc::new(Storage::new(&storage_config).map_err(|e| format!("Storage init error: {e}"))?);
-
-        if let Err(e) = dispatcher_loop(
-            channel,
-            check_interval,
-            running,
-            rt.clone(),
-            storage,
-            "config/config.yaml".to_string(),
-        ) {
-            return Err(format!("dispatcher error: {e}"));
-        }
-
-        Err("Expected abrupt end".to_string())
-    });
-
-    Ok(handle)
+    run_ping_flow(
+        storage_path,
+        move |running, storage| start_dispatcher(running, storage, config_path.clone()),
+        |port| start_ping(port),
+    )
 }
 
 fn start_ping(port: u16) -> thread::JoinHandle<Result<(), anyhow::Error>> {
     let handle = thread::spawn(move || ping::prover::run_job(port));
     handle
-}
-
-fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
-    let privk = fs::read_to_string("../test_cert/services.key").unwrap();
-    let cert = Cert::new_with_privk(&privk).unwrap();
-    let allow_list =
-        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]).unwrap();
-    let routing = RoutingTable::new();
-    routing.lock().unwrap().allow_all();
-    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap());
-
-    let storage = Arc::new(Mutex::new(
-        bitvmx_broker::broker_memstorage::MemStorage::new(),
-    ));
-
-    let server =
-        BrokerSync::new(&config, storage.clone(), cert, allow_list.clone(), routing).unwrap();
-    Ok(server)
 }

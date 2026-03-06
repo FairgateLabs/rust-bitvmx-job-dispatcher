@@ -26,3 +26,4 @@ bitvmx-dispatcher-utils = { path = "../dispatcher-utils" }
 
 [dev-dependencies]
 rand = "0.9.1"
+test-helper = { path = "../test-helper" }
