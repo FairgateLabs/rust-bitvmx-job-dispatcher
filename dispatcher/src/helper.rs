@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs, path,
     process::{Child, Command},
     sync::{Arc, Mutex},
@@ -11,7 +12,7 @@ use tracing::{error, info};
 use crate::{
     dispatcher_error::DispatcherError,
     dispatcher_message::DispatcherMessage,
-    dispatcher_module::{Dispatcher, JobContext},
+    dispatcher_module::{parse_and_register_job, JobContext},
     dispatcher_storage::DispatcherStorage,
 };
 use std::path::PathBuf;
@@ -31,7 +32,7 @@ pub fn job_key(job_id: &str) -> String {
 }
 
 pub fn process_msg<V>(
-    dispatcher: &mut Dispatcher<V>,
+    jobs: &mut HashMap<String, V>,
     msg: &str,
 ) -> Result<(Child, JobContext), DispatcherError>
 where
@@ -39,13 +40,13 @@ where
 {
     info!("Received: {:?}", msg);
 
-    let (cmd, args, job_context) = dispatcher.process_msg(&msg)?;
+    let (cmd, args, job_context) = parse_and_register_job(jobs, &msg)?;
     let cmd = resolve_command_path(&cmd)?;
     info!("Command: {:?}", cmd);
     info!("Args: {:?}", args);
 
     let child = Command::new(cmd).args(args).spawn().map_err(|e| {
-        dispatcher.discard_job(&job_context.job_id);
+        jobs.remove(&job_context.job_id);
         DispatcherError::IoError(e)
     })?;
 

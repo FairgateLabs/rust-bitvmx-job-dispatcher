@@ -7,6 +7,7 @@ pub mod dispatcher_storage;
 pub mod helper;
 
 use std::{
+    collections::HashMap,
     fs,
     process::Child,
     rc::Rc,
@@ -22,7 +23,7 @@ use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::I
 use bitvmx_dispatcher_utils::{Msg, PingMessage};
 use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
-use dispatcher_module::{Dispatcher, JobContext};
+use dispatcher_module::{process_result, JobContext};
 use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
@@ -36,7 +37,7 @@ use crate::{
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     channel: DualChannel,
     workers: Vec<(Child, Identifier, JobContext)>,
-    dispatcher: Dispatcher<T>,
+    jobs: HashMap<String, T>,
     storage: Arc<Mutex<DispatcherStorage>>,
 }
 
@@ -46,17 +47,17 @@ where
 {
     pub fn new(channel: DualChannel, storage: Rc<Storage>) -> Result<Self, DispatcherError> {
         let storage = Arc::new(Mutex::new(DispatcherStorage::new(storage)));
-        let mut dispatcher = Dispatcher::<T>::new();
+        let mut jobs = HashMap::new();
 
         let workers = storage
             .lock()
             .map_err(|_| DispatcherError::MutexPoisoned)?
-            .restore_jobs(&mut dispatcher)?;
+            .restore_jobs(&mut jobs)?;
 
         Ok(Self {
             channel,
             workers,
-            dispatcher,
+            jobs,
             storage,
         })
     }
@@ -95,7 +96,7 @@ where
 
                 self.channel.send(&msg.id, pong)?;
             } else {
-                let (child, context) = process_msg(&mut self.dispatcher, &msg.raw)?;
+                let (child, context) = process_msg(&mut self.jobs, &msg.raw)?;
                 persist_job(&context, &msg, self.storage.clone())?;
                 self.workers.push((child, msg.id, context));
             }
@@ -124,15 +125,14 @@ where
 
                             if status.success() {
                                 if let Some(job_type) =
-                                    self.dispatcher.get_job_type(&context.job_id)
+                                    self.jobs.get(&context.job_id)
                                 {
                                     job_type.commit_checkpoint()?;
                                 }
                             }
 
                             let result =
-                                self.dispatcher
-                                    .process_result(&context.job_id, buf, status)?;
+                                process_result(&mut self.jobs, &context.job_id, buf, status)?;
 
                             let result = self.channel.send(
                                 &id,
