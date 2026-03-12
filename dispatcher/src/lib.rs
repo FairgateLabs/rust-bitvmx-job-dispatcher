@@ -1,3 +1,4 @@
+pub mod cli;
 pub mod dispatcher_error;
 pub mod dispatcher_job;
 pub mod dispatcher_message;
@@ -70,7 +71,13 @@ where
     }
 
     pub fn tick(&mut self) -> Result<bool, DispatcherError> {
-        let msg = self.channel.recv()?;
+        let msg = self.channel.recv();
+        if msg.is_err() {
+            warn!("Failed to receive message from channel: {:?}", msg.err());
+            return Ok(false);
+        }
+        let msg = msg.unwrap();
+
         let mut job_completed = false;
 
         if let Some(msg) = msg {

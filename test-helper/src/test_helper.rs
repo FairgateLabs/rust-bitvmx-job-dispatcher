@@ -1,7 +1,6 @@
 use std::{
     fs,
     net::{IpAddr, Ipv4Addr},
-    path,
     rc::Rc,
     sync::{Arc, Mutex, Once},
     thread::sleep,
@@ -13,36 +12,15 @@ use bitvmx_broker::{
     identification::{allow_list::AllowList, identifier::Identifier, routing::RoutingTable},
     rpc::{BrokerConfig, sync_server::BrokerSync, tls_helper::Cert},
 };
-use bitvmx_job_dispatcher::get_storage_with_path;
+use bitvmx_job_dispatcher::{get_storage_with_path, helper::remove_storage_path};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use storage_backend::storage::Storage;
 use tokio::runtime::Runtime;
-use tracing::{error, info};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 pub const PORT: u16 = 10300;
-
-// ======================================================
-// Storage Utilities
-// ======================================================
-
-pub fn get_storage_path() -> String {
-    let storage_path = format!("temp-runs/storage_job_{}.db", std::process::id());
-    if path::Path::new(&storage_path).exists() {
-        remove_storage_path(&storage_path);
-    }
-    storage_path
-}
-
-pub fn remove_storage_path(storage_path: &str) {
-    // clean up the test’s storage file
-    info!("Cleaning up storage file: {}", storage_path);
-    if path::Path::new(&storage_path).exists() {
-        fs::remove_dir_all(&storage_path)
-            .unwrap_or_else(|e| error!("Warning: could not remove storage file: {e}"))
-    }
-}
 
 // ======================================================
 // Tracing / Logging Initialization

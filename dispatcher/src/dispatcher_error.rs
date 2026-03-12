@@ -1,5 +1,6 @@
 use storage_backend::error::StorageError;
 use thiserror::Error;
+use tracing_subscriber::util::TryInitError;
 
 #[derive(Error, Debug)]
 pub enum DispatcherError {
@@ -38,4 +39,7 @@ pub enum DispatcherError {
 
     #[error("Checkpoint path error: {0}")]
     CheckpointPathError(String),
+
+    #[error("Tracing error {0}")]
+    TracingError(#[from] TryInitError),
 }

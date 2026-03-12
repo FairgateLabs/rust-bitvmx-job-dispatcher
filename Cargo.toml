@@ -9,4 +9,5 @@ members = [
     "aws-service",
     "dispatcher-utils",
     "test-helper",
+    "dispatcher-aws",
 ]

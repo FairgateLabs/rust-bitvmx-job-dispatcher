@@ -1,7 +1,8 @@
 use crate::common::start_emulator;
 use anyhow::Result;
+use bitvmx_job_dispatcher::helper::get_storage_path;
 use std::thread;
-use test_helper::test_helper::{get_storage_path, init_trace, run_ping_flow, Paths};
+use test_helper::test_helper::{init_trace, run_ping_flow, Paths};
 #[path = "../examples/ping.rs"]
 mod ping;
 
