@@ -20,9 +20,7 @@ Notes:
 
 This project can offload work to an AWS EC2 instance. The following describes the recommended instance preparation.
 
-Prerequisites
-- An S3 bucket for input and result files.
-- An EC2 instance (avoid Amazon Linux, it is known to be incompatible and we recommend to use t3.xlarge to run at least the integration test).
+To use this dispatcher, you will need to create an S3 bucket, to configure an EC2 Instance (explained below) and to create an image from that instance.
 
 Required software on the instance
 - Git
@@ -33,12 +31,14 @@ Required software on the instance
 IAM and access
 - Grant the instance access to the S3 bucket (at minimum s3:GetObject and s3:PutObject for the target bucket).
 - Attach the AmazonSSMManagedInstanceCore policy so you can manage the instance with AWS Systems Manager (SSM).
+This instance_profile_arn of IAM role must be put on the configuration file
 
 Quick setup outline
-1. Launch an EC2 instance with the IAM role attached.
+1. Launch an EC2 instance.
 2. Connect and install Git, rustup (Rust), and the AWS CLI.
 3. Clone rust-bitvmx-zk-proof and install any ZKP build dependencies and toolchains it requires.
-4. Verify the instance can read/write the S3 bucket and that SSM connectivity works (you can use the provided integration test for this).
+4. Create the Image (Select EC2 Instance, Actions -> Images and Templates -> Create Image)
 
 ### Provisioning script
-This repository contains a shell script to help bootstrap and configure an AWS dispatcher instance.
+This repository contains a shell script to help install AWS CLI
+Also, rust-bitvmx-zk-proof has their own scripts to help install RiscZero and the dependencies
