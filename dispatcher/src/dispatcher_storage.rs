@@ -56,6 +56,19 @@ impl DispatcherStorage {
             let msg = Msg::from_string(&raw)?;
 
             let (child, context) = process_msg(dispatcher, &msg.raw)?;
+
+            // if command file exists and corresponds to this same job, skip restoring
+            if let Ok(buf) = std::fs::read_to_string(&context.command_file) {
+                if dispatcher.is_expected_type(&context.job_id, &buf) {
+                    info!(
+                        "Job {:?} was already completed (command file exists and matches expected type), skipping restore",
+                        context.job_id
+                    );
+                    dispatcher.discard_job(&context.job_id);
+                    continue;
+                }
+            }
+
             workers.push((child, msg.id, context));
         }
 

@@ -115,6 +115,14 @@ where
                             info!("Worker output from file: {}", buf);
                             info!("Worker exited with status: {:?}", status);
 
+                            if status.success() {
+                                if let Some(job_type) =
+                                    self.dispatcher.get_job_type(&context.job_id)
+                                {
+                                    job_type.commit_checkpoint()?;
+                                }
+                            }
+
                             let result =
                                 self.dispatcher
                                     .process_result(&context.job_id, buf, status)?;

@@ -35,4 +35,7 @@ pub enum DispatcherError {
 
     #[error("Utils error {0}")]
     UtilsError(#[from] bitvmx_dispatcher_utils::error::UtilsError),
+
+    #[error("Checkpoint path error: {0}")]
+    CheckpointPathError(String),
 }

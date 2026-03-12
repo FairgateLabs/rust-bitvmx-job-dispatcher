@@ -1,11 +1,9 @@
+use tracing::error;
+
 pub mod prover {
     use bitvmx_aws_job_dispatcher::dispatcher_job::{DispatcherJob, ProverJobType, ResultMessage};
-    use bitvmx_broker::identification::allow_list::AllowList;
-    use bitvmx_broker::identification::identifier::Identifier;
-    use bitvmx_broker::rpc::BrokerConfig;
-    use bitvmx_broker::{channel::channel::DualChannel, rpc::tls_helper::Cert};
-    use std::net::{IpAddr, Ipv4Addr};
-    use std::{fs, thread::sleep, time::Duration};
+    use test_helper::test_helper::{Paths, configure_example_broker, wait_for_result};
+    use tracing::info;
     use zk_result::ResultType as ProverResultType;
 
     // To make this example work, you need to:
@@ -18,27 +16,9 @@ pub mod prover {
     //      cargo run --release --example risczero --features "prover"
 
     pub(crate) fn run_proof(port: u16) -> Result<(), anyhow::Error> {
-        let privk = fs::read_to_string("../../rust-bitvmx-broker/certs/services.key")?;
-        let my_id = 2;
-        let dest_id = 1;
-        let cert = Cert::new_with_privk(&privk)?;
-        let allow_list =
-            AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
-        let emulator_id = Identifier {
-            pubkey_hash: cert.get_pubk_hash()?,
-            id: dest_id,
-        };
+        let paths = Paths::new("");
+        let (channel, emulator_id) = configure_example_broker(&paths, port)?;
 
-        let channel = DualChannel::new(
-            &BrokerConfig::new(
-                port,
-                Some(IpAddr::from([127, 0, 0, 1])),
-                cert.get_pubk_hash()?,
-            ),
-            cert,
-            Some(my_id),
-            allow_list,
-        )?;
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
             job_type: ProverJobType::Prove(
@@ -48,20 +28,18 @@ pub mod prover {
                 "./output.json".to_string(),
             ),
         })?;
+        info!("Waiting for job...");
         channel.send(&emulator_id, msg)?;
 
-        for _ in 0..10000000 {
-            if let Some((msg, _from)) = channel.recv()? {
-                println!("Received: {}", msg);
-                let result_msg = ResultMessage::from_str(&msg)?;
-                let result = ProverResultType::from_json_string(result_msg.result)
-                    .map_err(|e| anyhow::anyhow!(e))?;
-                println!("Result: {:?}", result);
-                break;
-            } else {
-                sleep(Duration::from_secs(1));
-            }
-        }
+        let result = wait_for_result(&channel, 10_000_000, 1, |msg| {
+            let result_msg = ResultMessage::from_str(msg)?;
+            let result = ProverResultType::from_json_string(result_msg.result)
+                .map_err(|e| anyhow::anyhow!(e))?;
+
+            Ok(Some(result))
+        })?;
+
+        info!("Result: {:?}", result);
 
         Ok(())
     }
@@ -70,6 +48,6 @@ pub mod prover {
 #[allow(dead_code)]
 fn main() {
     if let Err(e) = prover::run_proof(10000) {
-        eprintln!("Error: {}", e);
+        error!("Error: {}", e);
     }
 }
