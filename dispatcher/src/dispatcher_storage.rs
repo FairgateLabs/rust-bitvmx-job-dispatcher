@@ -23,15 +23,36 @@ impl DispatcherStorage {
         Self { storage }
     }
 
+    pub fn contains_job(&self, job_id: &str) -> Result<bool, DispatcherError> {
+        let key = job_key(job_id);
+        Ok(self.storage.has_key(&key)?)
+    }
+
     pub fn persist_job(&self, job_id: &str, raw_msg: &str) -> Result<(), DispatcherError> {
         let key = job_key(job_id);
         self.storage.set(&key, raw_msg.to_string(), None)?;
         Ok(())
     }
 
+    pub fn get_job(&self, job_id: &str) -> Result<Option<String>, DispatcherError> {
+        let key = job_key(job_id);
+        Ok(self.storage.get(&key)?)
+    }
+
     pub fn remove_job(&self, job_id: &str) -> Result<(), DispatcherError> {
         let key = job_key(job_id);
         self.storage.remove(&key, None)?;
+        Ok(())
+    }
+
+    pub fn list_jobs(&self) -> Result<Vec<String>, DispatcherError> {
+        let keys = self.storage.partial_compare_keys("job_")?;
+        Ok(keys)
+    }
+
+    pub fn job_completed(&self, job_id: &str, result: &str) -> Result<(), DispatcherError> {
+        let key = job_key(job_id);
+        self.storage.set(&key, result.to_string(), None)?;
         Ok(())
     }
 
@@ -58,7 +79,7 @@ impl DispatcherStorage {
             let (child, context) = process_msg(jobs, &msg.raw)?;
 
             // if command file exists and corresponds to this same job, skip restoring
-            if let Ok(buf) = std::fs::read_to_string(&context.command_file) {
+            if let Ok(buf) = std::fs::read_to_string(&context.result_file) {
                 if is_expected_type(jobs, &context.job_id, &buf) {
                     info!(
                         "Job {:?} was already completed (command file exists and matches expected type), skipping restore",

@@ -2,10 +2,8 @@ use std::{
     collections::HashMap,
     fs, path,
     process::{Child, Command},
-    sync::{Arc, Mutex},
 };
 
-use bitvmx_dispatcher_utils::Msg;
 use serde::de::DeserializeOwned;
 use tracing::{error, info};
 
@@ -13,11 +11,10 @@ use crate::{
     dispatcher_error::DispatcherError,
     dispatcher_message::DispatcherMessage,
     dispatcher_module::{parse_and_register_job, JobContext},
-    dispatcher_storage::DispatcherStorage,
 };
 use std::path::PathBuf;
 
-fn resolve_command_path(cmd: &str) -> Result<PathBuf, DispatcherError> {
+pub fn resolve_command_path(cmd: &str) -> Result<PathBuf, DispatcherError> {
     if cmd != "sh" {
         let cwd: PathBuf = env::current_dir()?;
         info!("Current working dir: {}", cwd.display());
@@ -53,7 +50,7 @@ where
     Ok((child, job_context))
 }
 
-pub fn persist_job(
+/*pub fn persist_job(
     job_context: &JobContext,
     msg: &Msg,
     storage: Arc<Mutex<DispatcherStorage>>,
@@ -64,7 +61,7 @@ pub fn persist_job(
         .map_err(|_| DispatcherError::MutexPoisoned)?
         .persist_job(&key, &msg.to_string())?;
     Ok(())
-}
+}*/
 
 // ======================================================
 // Storage Utilities

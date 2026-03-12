@@ -7,13 +7,12 @@ pub mod dispatcher_storage;
 pub mod helper;
 
 use std::{
-    collections::HashMap,
     fs,
-    process::Child,
+    process::{Child, Command},
     rc::Rc,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     time::Duration,
 };
@@ -25,20 +24,20 @@ use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
 use dispatcher_module::{process_result, JobContext};
 use dispatcher_storage::DispatcherStorage;
-use serde::de::DeserializeOwned;
+use serde::de::{self, DeserializeOwned};
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
-    dispatcher_error::DispatcherError,
-    helper::{persist_job, process_msg},
+    dispatcher_error::DispatcherError, dispatcher_job::DispatcherJob, helper::resolve_command_path,
 };
 
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     channel: DualChannel,
     workers: Vec<(Child, Identifier, JobContext)>,
-    jobs: HashMap<String, T>,
-    storage: Arc<Mutex<DispatcherStorage>>,
+    //jobs: HashMap<String, T>,
+    storage: DispatcherStorage,
+    _phantom_data: std::marker::PhantomData<T>,
 }
 
 impl<T> DispatcherHandler<T>
@@ -46,29 +45,21 @@ where
     T: DispatcherMessage + DeserializeOwned,
 {
     pub fn new(channel: DualChannel, storage: Rc<Storage>) -> Result<Self, DispatcherError> {
-        let storage = Arc::new(Mutex::new(DispatcherStorage::new(storage)));
-        let mut jobs = HashMap::new();
+        let storage = DispatcherStorage::new(storage);
+        //let mut jobs = HashMap::new();
 
-        let workers = storage
-            .lock()
-            .map_err(|_| DispatcherError::MutexPoisoned)?
-            .restore_jobs(&mut jobs)?;
+        /*let workers = storage
+        .lock()
+        .map_err(|_| DispatcherError::MutexPoisoned)?
+        .restore_jobs(&mut jobs)?;*/
 
         Ok(Self {
             channel,
-            workers,
-            jobs,
+            workers: Vec::new(),
+            //jobs,
             storage,
+            _phantom_data: std::marker::PhantomData,
         })
-    }
-
-    pub fn new_with_path(
-        channel: DualChannel,
-        storage_path: &str,
-    ) -> Result<Self, DispatcherError> {
-        let config = StorageConfig::new(storage_path.to_string(), None);
-        let storage = Rc::new(Storage::new(&config)?);
-        Self::new(channel, storage)
     }
 
     pub fn tick(&mut self) -> Result<bool, DispatcherError> {
@@ -96,9 +87,14 @@ where
 
                 self.channel.send(&msg.id, pong)?;
             } else {
-                let (child, context) = process_msg(&mut self.jobs, &msg.raw)?;
-                persist_job(&context, &msg, self.storage.clone())?;
-                self.workers.push((child, msg.id, context));
+                let job = decode_msg(&msg.raw)?;
+                if self.storage.contains_job(&job.job_id)? {
+                    warn!("Job with id {} already exists, skipping", job.job_id);
+                }
+                {
+                    let (child, context) = spawn_local_job(&job)?;
+                    self.storage.persist_job(&context.job_id, &msg.raw)?;
+                }
             }
         }
 
@@ -111,25 +107,44 @@ where
                         Ok(Some(status)) => {
                             job_completed = true;
 
-                            let buf = match fs::read_to_string(&context.command_file) {
-                                Ok(buf) => buf,
-                                Err(e) => {
-                                    let _ =
-                                        self.channel.send(&id, "Failed to read file".to_string());
-                                    return Err(DispatcherError::IoError(e));
+                            let (result, is_err) = if status.success() {
+                                match fs::read_to_string(&context.result_file) {
+                                    Ok(buf) => (buf, false),
+                                    Err(e) => (
+                                        format!(
+                                            "Failed to read result file for job {}: {}",
+                                            context.job_id, e
+                                        )
+                                        .to_string(),
+                                        true,
+                                    ),
                                 }
+                            } else {
+                                (
+                                    format!(
+                                    "Worker process for job {} exited with non-zero status: {:?}",
+                                    context.job_id, status
+                                )
+                                    .to_string(),
+                                    true,
+                                )
                             };
 
-                            info!("Worker output from file: {}", buf);
+                            info!("Worker output from file: {}", result);
                             info!("Worker exited with status: {:?}", status);
 
-                            if status.success() {
-                                if let Some(job_type) =
-                                    self.jobs.get(&context.job_id)
-                                {
-                                    job_type.commit_checkpoint()?;
-                                }
+                            let job = self.storage.get_job(&context.job_id)?;
+                            if job.is_none() {
+                                error!(
+                                    "Job {} not found in storage, skipping result processing",
+                                    context.job_id
+                                );
+                                return Ok(false);
                             }
+
+                            let job = decode_msg(&job.unwrap())?;
+                            let expected_msg_type = job.job_type().message_type();
+                            extract_structured_json(&expected_type, &result);
 
                             let result =
                                 process_result(&mut self.jobs, &context.job_id, buf, status)?;
@@ -190,4 +205,27 @@ pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned + std::fmt::Debug
 pub fn get_storage_with_path(storage_path: &str) -> Result<Rc<Storage>, DispatcherError> {
     let config = StorageConfig::new(storage_path.to_string(), None);
     Ok(Rc::new(Storage::new(&config)?))
+}
+
+fn decode_msg<V>(msg: &str) -> Result<DispatcherJob<V>, DispatcherError>
+where
+    V: DispatcherMessage + DeserializeOwned,
+{
+    let msg: DispatcherJob<V> = serde_json::from_str(msg)?;
+    Ok(msg)
+}
+
+fn spawn_local_job<V>(msg: &DispatcherJob<V>) -> Result<(Child, JobContext), DispatcherError>
+where
+    V: DispatcherMessage + DeserializeOwned,
+{
+    let (cmd, args, command_file) = msg.job_type.command()?;
+    let cmd = resolve_command_path(&cmd)?;
+    info!("Command: {:?}", cmd);
+    info!("Args: {:?}", args);
+
+    let job_context = JobContext::new(msg.job_id.clone(), command_file.clone());
+    let child = Command::new(cmd).args(args).spawn()?;
+
+    Ok((child, job_context))
 }

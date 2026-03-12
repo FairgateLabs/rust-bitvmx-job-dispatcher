@@ -10,14 +10,14 @@ use tracing::error;
 #[derive(Clone)]
 pub struct JobContext {
     pub job_id: String,
-    pub command_file: String,
+    pub result_file: String,
 }
 
 impl JobContext {
-    pub fn new(job_id: String, command_file: String) -> Self {
+    pub fn new(job_id: String, result_file: String) -> Self {
         Self {
             job_id,
-            command_file,
+            result_file,
         }
     }
 }
