@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum DispatcherError {
+pub enum AwsDispatcherError {
     #[error("Serialization error {0}")]
     SerializationError(#[from] serde_json::Error),
 
@@ -73,4 +73,7 @@ pub enum DispatcherError {
 
     #[error("Instance timeout")]
     InstanceTimeout,
+
+    #[error("Dispatcher error {0}")]
+    DispatcherError(#[from] bitvmx_job_dispatcher::dispatcher_error::DispatcherError),
 }

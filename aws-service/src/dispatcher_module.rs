@@ -1,8 +1,4 @@
-use crate::{
-    config::AppConfig,
-    dispatcher_error::DispatcherError,
-    dispatcher_job::{DispatcherJob, ProverJobType},
-};
+use crate::{config::AppConfig, dispatcher_error::AwsDispatcherError};
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_sdk_ec2::{
     Client as Ec2Client,
@@ -16,6 +12,8 @@ use aws_sdk_ssm::{
     Client as SsmClient,
     types::{CommandInvocationStatus, PingStatus},
 };
+use bitvmx_job_dispatcher::dispatcher_job::DispatcherJob;
+use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, sync::mpsc::Sender, time::Duration};
 use tokio::{
@@ -60,7 +58,7 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
-    pub async fn new(config_path: String) -> Result<Self, DispatcherError> {
+    pub async fn new(config_path: String) -> Result<Self, AwsDispatcherError> {
         let config = AppConfig::load(Some(config_path))?;
         let creds = Credentials::new(
             config.aws.access_key_id.clone(),
@@ -83,11 +81,11 @@ impl Dispatcher {
         })
     }
 
-    pub fn process_msg(&mut self, msg: &str) -> Result<JobContext, DispatcherError> {
-        let msg: DispatcherJob = serde_json::from_str(msg)?;
+    pub fn process_msg(&mut self, msg: &str) -> Result<JobContext, AwsDispatcherError> {
+        let msg: DispatcherJob<ProverJobType> = serde_json::from_str(msg)?;
         if self.jobs.contains_key(&msg.job_id) {
             error!("Job id already exists: {}", msg.job_id);
-            return Err(DispatcherError::JobIdAlreadyExists);
+            return Err(AwsDispatcherError::JobIdAlreadyExists);
         }
 
         let job_context = match msg.job_type {
@@ -135,7 +133,7 @@ impl Dispatcher {
         Ok(job_context)
     }
 
-    pub fn add_job(&mut self, context: JobContext) -> Result<(), DispatcherError> {
+    pub fn add_job(&mut self, context: JobContext) -> Result<(), AwsDispatcherError> {
         let output_file_path = match context
             .download_bucket
             .get(&format!("output_{}.json", context.job_id))
@@ -143,7 +141,7 @@ impl Dispatcher {
             Some(path) => path.clone(),
             None => {
                 error!("Output path not found for job ID: {}", context.job_id);
-                return Err(DispatcherError::OutputPathNotFound);
+                return Err(AwsDispatcherError::OutputPathNotFound);
             }
         };
 
@@ -191,7 +189,7 @@ impl Dispatcher {
         None
     }
 
-    pub async fn obtain_new_instance(&self, name: &str) -> Result<String, DispatcherError> {
+    pub async fn obtain_new_instance(&self, name: &str) -> Result<String, AwsDispatcherError> {
         let (ec2_client, ..) = self.create_clients().await;
         let instance_type = InstanceType::from(self.config.ec2.instance_type.as_str());
         let run_response = ec2_client
@@ -213,7 +211,7 @@ impl Dispatcher {
             .max_count(1)
             .send()
             .await
-            .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
+            .map_err(|e| AwsDispatcherError::Ec2Error(e.into()))?;
 
         let instances = run_response.instances();
 
@@ -222,12 +220,12 @@ impl Dispatcher {
                 "Expected to launch 1 instance, but launched {}",
                 instances.len()
             );
-            return Err(DispatcherError::InstanceLaunchFailed);
+            return Err(AwsDispatcherError::InstanceLaunchFailed);
         }
 
         let instance_id = instances[0].instance_id().ok_or_else(|| {
             error!("No instance ID returned from run_instances response");
-            DispatcherError::InstanceLaunchFailed
+            AwsDispatcherError::InstanceLaunchFailed
         })?;
 
         Ok(instance_id.to_string())
@@ -237,7 +235,7 @@ impl Dispatcher {
         &self,
         instance_id: &str,
         context: &JobContext,
-    ) -> Result<bool, DispatcherError> {
+    ) -> Result<bool, AwsDispatcherError> {
         let (_, ssm_client, s3_client) = self.create_clients().await;
         if !self
             .command_ran_finished_successfully(instance_id, ssm_client)
@@ -248,7 +246,7 @@ impl Dispatcher {
 
         match self.file_state_is_valid(&s3_client, context).await {
             Ok(_) => Ok(true),
-            Err(DispatcherError::CorruptedS3File) => {
+            Err(AwsDispatcherError::CorruptedS3File) => {
                 error!(
                     "Output file for job ID {} is corrupted, treating as not finished",
                     context.job_id
@@ -256,7 +254,7 @@ impl Dispatcher {
                 Ok(false)
             }
             Err(e) => match e {
-                DispatcherError::S3Error(aws_sdk_s3::Error::NotFound(_)) => {
+                AwsDispatcherError::S3Error(aws_sdk_s3::Error::NotFound(_)) => {
                     info!(
                         "Output file for job ID {} not found in S3, treating as not finished",
                         context.job_id
@@ -278,7 +276,7 @@ impl Dispatcher {
         &self,
         client: &S3Client,
         context: &JobContext,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         Ok(for (file_name, _) in &context.download_bucket {
             let bucket = &self.config.s3.bucket;
             let resp = client
@@ -288,14 +286,14 @@ impl Dispatcher {
                 .checksum_mode(ChecksumMode::Enabled)
                 .send()
                 .await
-                .map_err(|e| DispatcherError::S3Error(e.into()))?;
+                .map_err(|e| AwsDispatcherError::S3Error(e.into()))?;
 
             if resp.checksum_sha256().is_none() {
                 info!(
                     "Output file {} does not have a checksum, treating as corrupted",
                     file_name
                 );
-                return Err(DispatcherError::CorruptedS3File);
+                return Err(AwsDispatcherError::CorruptedS3File);
             }
         })
     }
@@ -306,7 +304,7 @@ impl Dispatcher {
         new_instance_id: &str,
         context: JobContext,
         tx: Sender<()>,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         info!(
             "Restarting petition for job ID: {} on instance ID: {}",
             context.job_id, old_instance_id
@@ -324,7 +322,7 @@ impl Dispatcher {
         instance_id: &str,
         context: JobContext,
         tx: Sender<()>,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         info!(
             "Managing petition for job ID: {} on instance ID: {}",
             context.job_id, instance_id
@@ -370,7 +368,7 @@ impl Dispatcher {
         &self,
         client: &S3Client,
         context: &JobContext,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         for (file_name, data) in &context.upload_bucket {
             let bucket = &self.config.s3.bucket;
 
@@ -381,7 +379,7 @@ impl Dispatcher {
                 .body(data.clone().into())
                 .send()
                 .await
-                .map_err(|e| DispatcherError::S3Error(e.into()))?;
+                .map_err(|e| AwsDispatcherError::S3Error(e.into()))?;
 
             info!("File uploaded to S3: s3://{}/{}", bucket, file_name);
         }
@@ -393,7 +391,7 @@ impl Dispatcher {
         client: &Ec2Client,
         ssm_client: &SsmClient,
         instance_id: &str,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         let time = Instant::now();
 
         loop {
@@ -402,7 +400,7 @@ impl Dispatcher {
                 .instance_ids(instance_id)
                 .send()
                 .await
-                .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
+                .map_err(|e| AwsDispatcherError::Ec2Error(e.into()))?;
 
             let state = resp
                 .reservations()
@@ -417,7 +415,7 @@ impl Dispatcher {
                 "running" => break,
                 "shutting-down" | "stopped" | "stopping" | "terminated" => {
                     error!("Instance {} is in state {}", instance_id, state);
-                    return Err(DispatcherError::InstanceNotRunning);
+                    return Err(AwsDispatcherError::InstanceNotRunning);
                 }
                 _ => debug!("Instance state is {}, waiting for 'running'...", state),
             }
@@ -427,7 +425,7 @@ impl Dispatcher {
                     "Instance {} did not reach 'running' state within 5 minutes",
                     instance_id
                 );
-                return Err(DispatcherError::InstanceTimeout);
+                return Err(AwsDispatcherError::InstanceTimeout);
             }
 
             sleep(Duration::from_secs(1)).await;
@@ -444,7 +442,7 @@ impl Dispatcher {
                 .include_all_instances(true)
                 .send()
                 .await
-                .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
+                .map_err(|e| AwsDispatcherError::Ec2Error(e.into()))?;
 
             if let Some(status) = resp.instance_statuses().first() {
                 let sys_ok = match status.system_status().and_then(|s| s.status()) {
@@ -453,7 +451,7 @@ impl Dispatcher {
                     | Some(&SummaryStatus::InsufficientData)
                     | Some(&SummaryStatus::NotApplicable) => {
                         error!("Invalid System Status for instance {}", instance_id);
-                        return Err(DispatcherError::InvalidStatus("System".into()));
+                        return Err(AwsDispatcherError::InvalidStatus("System".into()));
                     }
                     _ => false,
                 };
@@ -464,7 +462,7 @@ impl Dispatcher {
                     | Some(&SummaryStatus::InsufficientData)
                     | Some(&SummaryStatus::NotApplicable) => {
                         error!("Invalid Instance Status for instance {}", instance_id);
-                        return Err(DispatcherError::InvalidStatus("Instance".into()));
+                        return Err(AwsDispatcherError::InvalidStatus("Instance".into()));
                     }
                     _ => false,
                 };
@@ -478,7 +476,7 @@ impl Dispatcher {
                         "Instance {} did not reach 'running' state within 5 minutes",
                         instance_id
                     );
-                    return Err(DispatcherError::InstanceTimeout);
+                    return Err(AwsDispatcherError::InstanceTimeout);
                 }
 
                 debug!("Instance status is not ok yet, waiting...");
@@ -496,7 +494,7 @@ impl Dispatcher {
                 .describe_instance_information()
                 .send()
                 .await
-                .map_err(|e| DispatcherError::SsmError(e.into()))?;
+                .map_err(|e| AwsDispatcherError::SsmError(e.into()))?;
 
             for instance_info in resp.instance_information_list().iter() {
                 if instance_info.instance_id() == Some(instance_id) {
@@ -507,7 +505,7 @@ impl Dispatcher {
                         }
                         Some(&PingStatus::ConnectionLost) => {
                             error!("Connection lost for instance {}", instance_id);
-                            return Err(DispatcherError::InvalidStatus("SSM".into()));
+                            return Err(AwsDispatcherError::InvalidStatus("SSM".into()));
                         }
                         _ => {}
                     }
@@ -519,7 +517,7 @@ impl Dispatcher {
                     "Instance {} did not reach 'online' state within 5 minutes",
                     instance_id
                 );
-                return Err(DispatcherError::InstanceTimeout);
+                return Err(AwsDispatcherError::InstanceTimeout);
             }
             sleep(Duration::from_secs(1)).await;
         }
@@ -537,13 +535,13 @@ impl Dispatcher {
         &self,
         client: &Ec2Client,
         instance_id: &str,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         client
             .terminate_instances()
             .instance_ids(instance_id)
             .send()
             .await
-            .map_err(|e| DispatcherError::Ec2Error(e.into()))?;
+            .map_err(|e| AwsDispatcherError::Ec2Error(e.into()))?;
 
         Ok(())
     }
@@ -553,7 +551,7 @@ impl Dispatcher {
         client: &SsmClient,
         instance_id: &str,
         context: &JobContext,
-    ) -> Result<String, DispatcherError> {
+    ) -> Result<String, AwsDispatcherError> {
         let command = client
             .send_command()
             .instance_ids(instance_id)
@@ -561,14 +559,14 @@ impl Dispatcher {
             .parameters("commands", context.job_args.clone())
             .send()
             .await
-            .map_err(|e| DispatcherError::SsmError(e.into()))?;
+            .map_err(|e| AwsDispatcherError::SsmError(e.into()))?;
 
         let command_id = command
             .command()
             .and_then(|c| c.command_id())
             .ok_or_else(|| {
                 error!("No command ID returned from send_command response");
-                DispatcherError::CommandIdNotFound
+                AwsDispatcherError::CommandIdNotFound
             })?;
 
         info!("Command sent. ID: {}", command_id);
@@ -581,7 +579,7 @@ impl Dispatcher {
         client: &SsmClient,
         instance_id: &str,
         command_id: &str,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         let time = Instant::now();
         loop {
             let inv = client
@@ -590,7 +588,7 @@ impl Dispatcher {
                 .instance_id(instance_id)
                 .send()
                 .await
-                .map_err(|e| DispatcherError::SsmError(e.into()))?;
+                .map_err(|e| AwsDispatcherError::SsmError(e.into()))?;
 
             match inv.status() {
                 Some(status) => match status {
@@ -613,12 +611,12 @@ impl Dispatcher {
                             status,
                             inv.standard_error_content()
                         );
-                        return Err(DispatcherError::CommandExecutionFailed);
+                        return Err(AwsDispatcherError::CommandExecutionFailed);
                     }
                 },
                 None => {
                     error!("No status received for command invocation");
-                    return Err(DispatcherError::CommandExecutionFailed);
+                    return Err(AwsDispatcherError::CommandExecutionFailed);
                 }
             }
 
@@ -632,7 +630,7 @@ impl Dispatcher {
         &self,
         client: &S3Client,
         context: &JobContext,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         for (file_name, _) in &context.download_bucket {
             let bucket = &self.config.s3.bucket;
             let resp = client
@@ -642,14 +640,14 @@ impl Dispatcher {
                 .checksum_mode(ChecksumMode::Enabled)
                 .send()
                 .await
-                .map_err(|e| DispatcherError::S3Error(e.into()))?;
+                .map_err(|e| AwsDispatcherError::S3Error(e.into()))?;
 
             if resp.checksum_sha256().is_none() {
                 info!(
                     "Output file {} does not have a checksum, treating as corrupted",
                     file_name
                 );
-                return Err(DispatcherError::CorruptedS3File);
+                return Err(AwsDispatcherError::CorruptedS3File);
             }
         }
 
@@ -661,7 +659,7 @@ impl Dispatcher {
                 .key(file_name)
                 .send()
                 .await
-                .map_err(|e| DispatcherError::S3Error(e.into()))?;
+                .map_err(|e| AwsDispatcherError::S3Error(e.into()))?;
 
             let mut file = File::create(file_local_path).await?;
             let mut body = resp.body.into_async_read();
@@ -677,14 +675,14 @@ impl Dispatcher {
         &self,
         instance_id: &str,
         ssm_client: SsmClient,
-    ) -> Result<bool, DispatcherError> {
+    ) -> Result<bool, AwsDispatcherError> {
         let resp = ssm_client
             .list_command_invocations()
             .instance_id(instance_id)
             .details(true)
             .send()
             .await
-            .map_err(|e| DispatcherError::SsmError(e.into()))?;
+            .map_err(|e| AwsDispatcherError::SsmError(e.into()))?;
 
         let mut invocations = resp.command_invocations().to_vec();
 
@@ -773,7 +771,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_functions() -> Result<(), DispatcherError> {
+    async fn test_functions() -> Result<(), AwsDispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
@@ -806,7 +804,7 @@ mod tests {
             HashMap::from([("hello.txt".to_string(), "hello.txt".to_string())]),
         );
 
-        let result: Result<(), DispatcherError> = (async {
+        let result: Result<(), AwsDispatcherError> = (async {
             dispatcher
                 .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
                 .await?;
@@ -859,7 +857,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_job_finished_for_inexistent_instance_id() -> Result<(), DispatcherError> {
+    async fn test_check_job_finished_for_inexistent_instance_id() -> Result<(), AwsDispatcherError>
+    {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
@@ -884,7 +883,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_job_finished_for_unfinished_job() -> Result<(), DispatcherError> {
+    async fn test_check_job_finished_for_unfinished_job() -> Result<(), AwsDispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
@@ -903,7 +902,7 @@ mod tests {
             .obtain_new_instance("test_check_job_finished_for_unfinished_job")
             .await?;
 
-        let result: Result<(), DispatcherError> = (async {
+        let result: Result<(), AwsDispatcherError> = (async {
             dispatcher
                 .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
                 .await?;
@@ -938,7 +937,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_job_finished_for_corrupt_file() -> Result<(), DispatcherError> {
+    async fn test_check_job_finished_for_corrupt_file() -> Result<(), AwsDispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
@@ -963,7 +962,7 @@ mod tests {
             HashMap::from([("hello.txt".to_string(), "hello.txt".to_string())]),
         );
 
-        let result: Result<(), DispatcherError> = (async {
+        let result: Result<(), AwsDispatcherError> = (async {
             dispatcher
                 .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
                 .await?;
@@ -1002,7 +1001,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_check_job_finished_successful() -> Result<(), DispatcherError> {
+    async fn test_check_job_finished_successful() -> Result<(), AwsDispatcherError> {
         init_trace();
 
         let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
@@ -1030,7 +1029,7 @@ mod tests {
             )]),
         );
 
-        let result: Result<(), DispatcherError> = (async {
+        let result: Result<(), AwsDispatcherError> = (async {
             dispatcher
                 .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
                 .await?;

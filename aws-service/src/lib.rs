@@ -1,11 +1,11 @@
 mod config;
 mod dispatcher_error;
-pub mod dispatcher_job;
 mod dispatcher_module;
 mod dispatcher_storage;
 
 use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
 use bitvmx_dispatcher_utils::{Msg, PingMessage};
+use bitvmx_job_dispatcher::dispatcher_job::ResultMessage;
 use std::{
     collections::HashMap,
     rc::Rc,
@@ -22,8 +22,7 @@ use tracing::{debug, error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 use crate::{
-    dispatcher_error::DispatcherError,
-    dispatcher_job::ResultMessage,
+    dispatcher_error::AwsDispatcherError,
     dispatcher_module::{Dispatcher, JobContext},
     dispatcher_storage::DispatcherStorage,
 };
@@ -52,7 +51,7 @@ impl DispatcherHandler {
         handle: Handle,
         storage: Rc<Storage>,
         rt: &MutexGuard<'_, Runtime>,
-    ) -> Result<Self, DispatcherError> {
+    ) -> Result<Self, AwsDispatcherError> {
         let mut dispatcher = handle.block_on(Dispatcher::new(config_path.clone()))?;
         let storage = DispatcherStorage::new(storage);
         let max_running_instances = dispatcher.obtain_max_running_instances();
@@ -116,7 +115,7 @@ impl DispatcherHandler {
         })
     }
 
-    pub fn tick(&mut self) -> Result<(), DispatcherError> {
+    pub fn tick(&mut self) -> Result<(), AwsDispatcherError> {
         let msg = self.channel.recv();
         if msg.is_err() {
             warn!("Error receiving message: {}", msg.err().unwrap());
@@ -216,12 +215,12 @@ pub fn dispatcher_loop(
     rt: Arc<Mutex<Runtime>>,
     storage: Rc<Storage>,
     config_path: String,
-) -> Result<(), DispatcherError> {
+) -> Result<(), AwsDispatcherError> {
     info!("Starting dispatcher loop");
 
     let runtime = rt
         .lock()
-        .map_err(|_| DispatcherError::MutexPoisoned("Runtime".to_string()))?;
+        .map_err(|_| AwsDispatcherError::MutexPoisoned("Runtime".to_string()))?;
 
     let handle = runtime.handle().clone();
     let mut dispatcher_handler =

@@ -1,4 +1,4 @@
-use crate::{dispatcher_error::DispatcherError, dispatcher_module::JobContext};
+use crate::{dispatcher_error::AwsDispatcherError, dispatcher_module::JobContext};
 use bitvmx_broker::identification::identifier::Identifier;
 use std::{collections::HashMap, rc::Rc};
 use storage_backend::storage::{KeyValueStore, Storage};
@@ -23,7 +23,7 @@ impl DispatcherStorage {
             Vec<(Identifier, JobContext)>,
             HashMap<String, (Option<JobContext>, Option<Identifier>)>,
         ),
-        DispatcherError,
+        AwsDispatcherError,
     > {
         let mut pending_jobs = Vec::new();
         let mut instances_status = HashMap::new();
@@ -53,7 +53,7 @@ impl DispatcherStorage {
         &self,
         id: &Identifier,
         context: &JobContext,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         let key = self.pending_job_key(&id);
         self.storage.set(key, (context, id), None)?;
         Ok(())
@@ -63,15 +63,15 @@ impl DispatcherStorage {
         &self,
         instance_id: &str,
         id: &Identifier,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         let transaction_id = self.storage.begin_transaction();
 
-        let result: Result<(), DispatcherError> = (|| {
+        let result: Result<(), AwsDispatcherError> = (|| {
             let key_pending = self.pending_job_key(id);
             let context: Option<(JobContext, Identifier)> = self.storage.get(key_pending.clone())?;
             let context = match context {
                 Some((context, _)) => context,
-                None => return Err(DispatcherError::PendingJobNotFound),
+                None => return Err(AwsDispatcherError::PendingJobNotFound),
             };
 
             self.storage.remove(key_pending, Some(transaction_id))?;
@@ -92,7 +92,7 @@ impl DispatcherStorage {
         result
     }
 
-    pub fn delete_instance_status(&self, instance_id: &str) -> Result<(), DispatcherError> {
+    pub fn delete_instance_status(&self, instance_id: &str) -> Result<(), AwsDispatcherError> {
         let key = self.instance_status_key(instance_id);
         self.storage.remove(key, None)?;
         Ok(())
@@ -102,14 +102,14 @@ impl DispatcherStorage {
         &self,
         old_id: &String,
         new_id: &String,
-    ) -> Result<(), DispatcherError> {
+    ) -> Result<(), AwsDispatcherError> {
         let key_old = self.instance_status_key(&old_id);
         let key_new = self.instance_status_key(&new_id);
         let values: Option<(JobContext, Identifier)> = self.storage.get(key_old.clone())?;
         match values {
             Some((context, identifier)) => {
                 let transaction_id = self.storage.begin_transaction();
-                let result: Result<(), DispatcherError> = (|| {
+                let result: Result<(), AwsDispatcherError> = (|| {
                     self.storage
                         .set(key_new, (context, identifier), Some(transaction_id))?;
                     self.storage.remove(key_old, Some(transaction_id))?;
@@ -124,7 +124,7 @@ impl DispatcherStorage {
             }
             None => {
                 error!("Pending job with id {} not found", old_id);
-                return Err(DispatcherError::PendingJobNotFound);
+                return Err(AwsDispatcherError::PendingJobNotFound);
             }
         }
         Ok(())
@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn test_restore_data() -> Result<(), DispatcherError> {
+    fn test_restore_data() -> Result<(), AwsDispatcherError> {
         let config = StorageConfig::new(temp_storage().display().to_string(), None);
         let dispatcher_storage = DispatcherStorage::new(Rc::new(Storage::new(&config)?));
 
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn test_replace_instance_id() -> Result<(), DispatcherError> {
+    fn test_replace_instance_id() -> Result<(), AwsDispatcherError> {
         let config = StorageConfig::new(temp_storage().display().to_string(), None);
         let dispatcher_storage = DispatcherStorage::new(Rc::new(Storage::new(&config)?));
 

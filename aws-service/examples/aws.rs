@@ -1,12 +1,10 @@
-use tracing::error;
-
 pub mod prover {
     use std::fs;
 
-    use bitvmx_aws_job_dispatcher::dispatcher_job::{DispatcherJob, ProverJobType, ResultMessage};
     use bitvmx_broker::{identification::identifier::Identifier, rpc::tls_helper::Cert};
+    use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
+    use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
     use test_helper::test_helper::{Paths, configure_example_broker, wait_for_result};
-    use tracing::info;
     use zk_result::ResultType as ProverResultType;
 
     // To make this example work, you need to:
@@ -39,7 +37,7 @@ pub mod prover {
                 "./output.json".to_string(),
             ),
         })?;
-        info!("Waiting for job...");
+        println!("Waiting for job...");
         channel.send(&aws_id, msg)?;
 
         let result = wait_for_result(&channel, 10_000_000, 1, |msg| {
@@ -50,7 +48,7 @@ pub mod prover {
             Ok(Some(result))
         })?;
 
-        info!("Result: {:?}", result);
+        println!("Result: {:?}", result);
 
         Ok(())
     }
@@ -59,6 +57,6 @@ pub mod prover {
 #[allow(dead_code)]
 fn main() {
     if let Err(e) = prover::run_proof(10000) {
-        error!("Error: {}", e);
+        println!("Error: {}", e);
     }
 }

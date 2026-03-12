@@ -1,4 +1,4 @@
-use crate::dispatcher_error::DispatcherError;
+use crate::dispatcher_error::AwsDispatcherError;
 use serde::Deserialize;
 use tracing::info;
 
@@ -36,7 +36,7 @@ pub struct PathsConfig {
 }
 
 impl AppConfig {
-    pub fn load(path: Option<String>) -> Result<Self, DispatcherError> {
+    pub fn load(path: Option<String>) -> Result<Self, AwsDispatcherError> {
         match path {
             Some(config) => {
                 info!("Using configuration: {}", config);
