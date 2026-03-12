@@ -74,7 +74,8 @@ impl DispatcherHandler {
                 }
                 storage.delete_instance_status(&instance_id)?;
             } else {
-                let new_instance_id = handle.block_on(dispatcher.obtain_new_instance())?;
+                let new_instance_id =
+                    handle.block_on(dispatcher.obtain_new_instance(&context.job_id))?;
                 let (tx, rx) = channel::<()>();
                 let old_instance_id = instance_id.clone();
                 let new_instance_id_cloned = new_instance_id.clone();
@@ -152,7 +153,7 @@ impl DispatcherHandler {
                 if let Some((id, context)) = self.pending_jobs.pop() {
                     let instance_id = self
                         .handle
-                        .block_on(self.dispatcher.obtain_new_instance())?;
+                        .block_on(self.dispatcher.obtain_new_instance(&context.job_id))?;
                     self.storage.update_instance_status(&instance_id, &id)?;
                     let (tx, rx) = channel::<()>();
                     self.instances_status.insert(

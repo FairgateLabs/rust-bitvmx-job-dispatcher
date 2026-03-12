@@ -6,7 +6,10 @@ use crate::{
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_sdk_ec2::{
     Client as Ec2Client,
-    types::{IamInstanceProfileSpecification, InstanceType, SummaryStatus},
+    types::{
+        IamInstanceProfileSpecification, InstanceType, ResourceType, SummaryStatus, Tag,
+        TagSpecification,
+    },
 };
 use aws_sdk_s3::{Client as S3Client, config::Credentials, types::ChecksumMode};
 use aws_sdk_ssm::{
@@ -188,7 +191,7 @@ impl Dispatcher {
         None
     }
 
-    pub async fn obtain_new_instance(&self) -> Result<String, DispatcherError> {
+    pub async fn obtain_new_instance(&self, name: &str) -> Result<String, DispatcherError> {
         let (ec2_client, ..) = self.create_clients().await;
         let instance_type = InstanceType::from(self.config.ec2.instance_type.as_str());
         let run_response = ec2_client
@@ -198,6 +201,12 @@ impl Dispatcher {
             .iam_instance_profile(
                 IamInstanceProfileSpecification::builder()
                     .arn(&self.config.ec2.instance_profile_arn)
+                    .build(),
+            )
+            .tag_specifications(
+                TagSpecification::builder()
+                    .resource_type(ResourceType::Instance)
+                    .tags(Tag::builder().key("Name").value(name).build())
                     .build(),
             )
             .min_count(1)
@@ -237,7 +246,6 @@ impl Dispatcher {
             return Ok(false);
         }
 
-
         match self.file_state_is_valid(&s3_client, context).await {
             Ok(_) => Ok(true),
             Err(DispatcherError::CorruptedS3File) => {
@@ -266,7 +274,11 @@ impl Dispatcher {
         }
     }
 
-    async fn file_state_is_valid(&self, client: &S3Client, context: &JobContext) -> Result<(), DispatcherError> {
+    async fn file_state_is_valid(
+        &self,
+        client: &S3Client,
+        context: &JobContext,
+    ) -> Result<(), DispatcherError> {
         Ok(for (file_name, _) in &context.download_bucket {
             let bucket = &self.config.s3.bucket;
             let resp = client
@@ -277,7 +289,7 @@ impl Dispatcher {
                 .send()
                 .await
                 .map_err(|e| DispatcherError::S3Error(e.into()))?;
-    
+
             if resp.checksum_sha256().is_none() {
                 info!(
                     "Output file {} does not have a checksum, treating as corrupted",
@@ -287,7 +299,7 @@ impl Dispatcher {
             }
         })
     }
-    
+
     pub async fn restart_petition(
         &mut self,
         old_instance_id: &str,
@@ -674,9 +686,7 @@ impl Dispatcher {
             .await
             .map_err(|e| DispatcherError::SsmError(e.into()))?;
 
-        let mut invocations = resp
-            .command_invocations()
-            .to_vec();
+        let mut invocations = resp.command_invocations().to_vec();
 
         invocations.sort_by(|a, b| a.requested_date_time().cmp(&b.requested_date_time()));
         invocations.reverse();
@@ -733,7 +743,7 @@ mod tests {
     use crate::init_trace;
 
     use super::*;
-    use aws_config::{meta::region::RegionProviderChain, BehaviorVersion};
+    use aws_config::{BehaviorVersion, meta::region::RegionProviderChain};
     use aws_sdk_ec2::Client as Ec2Client;
 
     #[tokio::test]
@@ -771,7 +781,7 @@ mod tests {
 
         let (ec2_client, ssm_client, s3_client) = dispatcher.create_clients().await;
 
-        let instance_id = dispatcher.obtain_new_instance().await?;
+        let instance_id = dispatcher.obtain_new_instance("test_function").await?;
 
         let context = JobContext::new(
             "test_job".to_string(),
@@ -798,12 +808,12 @@ mod tests {
 
         let result: Result<(), DispatcherError> = (async {
             dispatcher
-            .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
-            .await?;
+                .wait_for_instance_to_be_able_to_run_command(&ec2_client, &ssm_client, &instance_id)
+                .await?;
 
-             dispatcher
-            .send_command(&ssm_client, &instance_id, &context)
-            .await?;
+            dispatcher
+                .send_command(&ssm_client, &instance_id, &context)
+                .await?;
 
             dispatcher.upload_file(&s3_client, &context).await?;
             info!("File uploaded successfully");
@@ -816,14 +826,15 @@ mod tests {
                 .await?;
             info!("Command completed successfully");
 
-            dispatcher
-                .download_file(&s3_client, &context)
-                .await?;
+            dispatcher.download_file(&s3_client, &context).await?;
 
             Ok(())
-        }).await;
+        })
+        .await;
 
-        dispatcher.terminate_instance(&ec2_client, &instance_id).await?;
+        dispatcher
+            .terminate_instance(&ec2_client, &instance_id)
+            .await?;
 
         match result {
             Ok(_) => {
@@ -843,7 +854,6 @@ mod tests {
                 return Err(e);
             }
         }
-        
 
         Ok(())
     }
@@ -889,7 +899,9 @@ mod tests {
             HashMap::new(),
         );
 
-        let instance_id = dispatcher.obtain_new_instance().await?;
+        let instance_id = dispatcher
+            .obtain_new_instance("test_check_job_finished_for_unfinished_job")
+            .await?;
 
         let result: Result<(), DispatcherError> = (async {
             dispatcher
@@ -903,7 +915,7 @@ mod tests {
             Ok(())
         })
         .await;
-    
+
         dispatcher
             .terminate_instance(&ec2_client, &instance_id)
             .await?;
@@ -933,7 +945,9 @@ mod tests {
         let dispatcher = Dispatcher::new(config_path.clone()).await?;
         let (ec2_client, ssm_client, _) = dispatcher.create_clients().await;
 
-        let instance_id = dispatcher.obtain_new_instance().await?;
+        let instance_id = dispatcher
+            .obtain_new_instance("test_check_job_finished_for_corrupt_file")
+            .await?;
         let test_context = JobContext::new(
             "test_job".to_string(),
             "Test".to_string(),
@@ -987,7 +1001,6 @@ mod tests {
         Ok(())
     }
 
-
     #[tokio::test]
     async fn test_check_job_finished_successful() -> Result<(), DispatcherError> {
         init_trace();
@@ -996,7 +1009,9 @@ mod tests {
         let dispatcher = Dispatcher::new(config_path.clone()).await?;
         let (ec2_client, ssm_client, _) = dispatcher.create_clients().await;
 
-        let instance_id = dispatcher.obtain_new_instance().await?;
+        let instance_id = dispatcher
+            .obtain_new_instance("test_check_job_finished_successful")
+            .await?;
         let test_context = JobContext::new(
             "test_job".to_string(),
             "Test".to_string(),
@@ -1048,7 +1063,7 @@ mod tests {
                 error!("Error during test execution: {:?}", e);
                 return Err(e);
             }
-        }   
+        }
 
         Ok(())
     }
