@@ -116,7 +116,12 @@ impl DispatcherHandler {
     }
 
     pub fn tick(&mut self) -> Result<(), DispatcherError> {
-        let msg = self.channel.recv()?;
+        let msg = self.channel.recv();
+        if msg.is_err() {
+            warn!("Error receiving message: {}", msg.err().unwrap());
+            return Ok(());
+        }
+        let msg = msg.unwrap();
         if let Some(msg) = msg {
             let msg = Msg::from_msg(msg.clone());
             if let Some(message) = serde_json::from_str::<PingMessage>(&msg.raw).ok() {

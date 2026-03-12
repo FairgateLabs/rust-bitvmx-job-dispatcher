@@ -32,7 +32,7 @@ struct Command {
     my_id: u8,
 
     /// Path to the private key file
-    #[arg(long, default_value = "../rust-bitvmx-client/config/keys/emulator.key")]
+    #[arg(long, default_value = "../rust-bitvmx-client/config/keys/prover.key")]
     my_priv_key: String,
 
     /// PubKeyHash of the broker service
@@ -45,6 +45,9 @@ struct Command {
     /// Path to storage database
     #[arg(long, default_value = "temp-runs/storage_job.db")]
     storage_path: String,
+
+    #[arg(long, default_value = "./aws-service/config/config.yaml")]
+    config_path: String,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -60,7 +63,6 @@ fn main() -> Result<(), anyhow::Error> {
         .map(|ip| ip.octets())
         .expect("Invalid IPv4 address");
 
-    //TODO: obtain these values from a config file
     let my_id = args.my_id;
     let privk = fs::read_to_string(&args.my_priv_key)?;
 
@@ -93,7 +95,7 @@ fn main() -> Result<(), anyhow::Error> {
         running,
         rt,
         storage,
-        "./config.yaml".to_string(),
+        args.config_path,
     )
     .map_err(|e| {
         error!("Dispatcher loop error: {}", e);
