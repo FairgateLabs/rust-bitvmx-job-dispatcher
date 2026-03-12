@@ -1,7 +1,8 @@
 use crate::common::start_dispatcher;
 use anyhow::Result;
+use bitvmx_job_dispatcher::helper::get_storage_path;
 use std::thread;
-use test_helper::test_helper::{get_storage_path, run_flow};
+use test_helper::test_helper::run_flow;
 #[path = "../examples/aws.rs"]
 mod aws;
 mod common;
