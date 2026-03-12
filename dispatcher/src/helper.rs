@@ -1,6 +1,5 @@
 use std::{
-    collections::HashMap,
-    fs, path,
+    env, fs, path,
     process::{Child, Command},
     sync::{Arc, Mutex},
 };
@@ -12,7 +11,7 @@ use tracing::{error, info};
 use crate::{
     dispatcher_error::DispatcherError,
     dispatcher_message::DispatcherMessage,
-    dispatcher_module::{parse_and_register_job, JobContext},
+    dispatcher_module::{parse_job_msg, JobContext},
     dispatcher_storage::DispatcherStorage,
 };
 use std::path::PathBuf;
@@ -31,24 +30,21 @@ pub fn job_key(job_id: &str) -> String {
     format!("job_{}", job_id)
 }
 
-pub fn process_msg<V>(
-    jobs: &mut HashMap<String, V>,
-    msg: &str,
-) -> Result<(Child, JobContext), DispatcherError>
+pub fn process_msg<V>(msg: &str) -> Result<(Child, JobContext), DispatcherError>
 where
     V: DispatcherMessage + DeserializeOwned,
 {
     info!("Received: {:?}", msg);
 
-    let (cmd, args, job_context) = parse_and_register_job(jobs, &msg)?;
+    let (cmd, args, job_context) = parse_job_msg::<V>(msg)?;
     let cmd = resolve_command_path(&cmd)?;
     info!("Command: {:?}", cmd);
     info!("Args: {:?}", args);
 
-    let child = Command::new(cmd).args(args).spawn().map_err(|e| {
-        jobs.remove(&job_context.job_id);
-        DispatcherError::IoError(e)
-    })?;
+    let child = Command::new(cmd)
+        .args(args)
+        .spawn()
+        .map_err(DispatcherError::IoError)?;
 
     Ok((child, job_context))
 }
@@ -58,11 +54,10 @@ pub fn persist_job(
     msg: &Msg,
     storage: Arc<Mutex<DispatcherStorage>>,
 ) -> Result<(), DispatcherError> {
-    let key: String = job_key(&job_context.job_id);
     storage
         .lock()
         .map_err(|_| DispatcherError::MutexPoisoned)?
-        .persist_job(&key, &msg.to_string())?;
+        .persist_job(&job_context.job_id, &msg.to_string())?;
     Ok(())
 }
 

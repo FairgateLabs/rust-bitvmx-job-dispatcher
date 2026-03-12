@@ -7,8 +7,8 @@ pub mod dispatcher_storage;
 pub mod helper;
 
 use std::{
-    collections::HashMap,
     fs,
+    marker::PhantomData,
     process::Child,
     rc::Rc,
     sync::{
@@ -23,7 +23,7 @@ use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::I
 use bitvmx_dispatcher_utils::{Msg, PingMessage};
 use dispatcher_job::ResultMessage;
 use dispatcher_message::DispatcherMessage;
-use dispatcher_module::{process_result, JobContext};
+use dispatcher_module::{validate_result, JobContext};
 use dispatcher_storage::DispatcherStorage;
 use serde::de::DeserializeOwned;
 use storage_backend::{storage::Storage, storage_config::StorageConfig};
@@ -37,8 +37,8 @@ use crate::{
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     channel: DualChannel,
     workers: Vec<(Child, Identifier, JobContext)>,
-    jobs: HashMap<String, T>,
     storage: Arc<Mutex<DispatcherStorage>>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> DispatcherHandler<T>
@@ -47,18 +47,17 @@ where
 {
     pub fn new(channel: DualChannel, storage: Rc<Storage>) -> Result<Self, DispatcherError> {
         let storage = Arc::new(Mutex::new(DispatcherStorage::new(storage)));
-        let mut jobs = HashMap::new();
 
         let workers = storage
             .lock()
             .map_err(|_| DispatcherError::MutexPoisoned)?
-            .restore_jobs(&mut jobs)?;
+            .restore_jobs::<T>()?;
 
         Ok(Self {
             channel,
             workers,
-            jobs,
             storage,
+            _phantom: PhantomData,
         })
     }
 
@@ -96,7 +95,20 @@ where
 
                 self.channel.send(&msg.id, pong)?;
             } else {
-                let (child, context) = process_msg(&mut self.jobs, &msg.raw)?;
+                let (child, context) = process_msg::<T>(&msg.raw)?;
+
+                // Check for duplicate job_id in storage
+                if self
+                    .storage
+                    .lock()
+                    .map_err(|_| DispatcherError::MutexPoisoned)?
+                    .has_job(&context.job_id)
+                {
+                    return Err(DispatcherError::JobIdAlreadyExists(
+                        context.job_id.clone(),
+                    ));
+                }
+
                 persist_job(&context, &msg, self.storage.clone())?;
                 self.workers.push((child, msg.id, context));
             }
@@ -123,16 +135,25 @@ where
                             info!("Worker output from file: {}", buf);
                             info!("Worker exited with status: {:?}", status);
 
+                            let job_type: Option<T> = self
+                                .storage
+                                .lock()
+                                .map_err(|_| DispatcherError::MutexPoisoned)?
+                                .get_job_type(&context.job_id)?;
+
+                            let job_type = job_type.ok_or_else(|| {
+                                DispatcherError::JobIdNotFound(context.job_id.clone())
+                            })?;
+
                             if status.success() {
-                                if let Some(job_type) =
-                                    self.jobs.get(&context.job_id)
-                                {
-                                    job_type.commit_checkpoint()?;
-                                }
+                                job_type.commit_checkpoint()?;
                             }
 
-                            let result =
-                                process_result(&mut self.jobs, &context.job_id, buf, status)?;
+                            let result = validate_result(
+                                &job_type.message_type(),
+                                buf,
+                                status,
+                            )?;
 
                             let result = self.channel.send(
                                 &id,

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, process::Child, rc::Rc};
+use std::{process::Child, rc::Rc};
 
 use bitvmx_broker::identification::identifier::Identifier;
 use bitvmx_dispatcher_utils::Msg;
@@ -8,6 +8,7 @@ use tracing::info;
 
 use crate::{
     dispatcher_error::DispatcherError,
+    dispatcher_job::DispatcherJob,
     dispatcher_message::DispatcherMessage,
     dispatcher_module::{is_expected_type, JobContext},
     helper::{job_key, process_msg},
@@ -35,9 +36,28 @@ impl DispatcherStorage {
         Ok(())
     }
 
+    pub fn has_job(&self, job_id: &str) -> bool {
+        let key = job_key(job_id);
+        matches!(self.storage.get::<_, String>(&key), Ok(Some(_)))
+    }
+
+    /// Deserializes the stored raw message to retrieve the job type.
+    pub fn get_job_type<T>(&self, job_id: &str) -> Result<Option<T>, DispatcherError>
+    where
+        T: DispatcherMessage + DeserializeOwned,
+    {
+        let key = job_key(job_id);
+        if let Ok(Some(raw)) = self.storage.get::<_, String>(&key) {
+            let msg = Msg::from_string(&raw)?;
+            let job: DispatcherJob<T> = serde_json::from_str(&msg.raw)?;
+            Ok(Some(job.job_type))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn restore_jobs<T>(
         &self,
-        jobs: &mut HashMap<String, T>,
     ) -> Result<Vec<(Child, Identifier, JobContext)>, DispatcherError>
     where
         T: DispatcherMessage + DeserializeOwned,
@@ -55,16 +75,20 @@ impl DispatcherStorage {
             info!("Restoring job from key {}: {}", key, raw);
             let msg = Msg::from_string(&raw)?;
 
-            let (child, context) = process_msg(jobs, &msg.raw)?;
+            // Parse the job to get the expected message type
+            let job: DispatcherJob<T> = serde_json::from_str(&msg.raw)?;
+            let expected_type = job.job_type.message_type();
+
+            let (child, context) = process_msg::<T>(&msg.raw)?;
 
             // if command file exists and corresponds to this same job, skip restoring
             if let Ok(buf) = std::fs::read_to_string(&context.command_file) {
-                if is_expected_type(jobs, &context.job_id, &buf) {
+                if is_expected_type(&expected_type, &buf) {
                     info!(
                         "Job {:?} was already completed (command file exists and matches expected type), skipping restore",
                         context.job_id
                     );
-                    jobs.remove(&context.job_id);
+                    self.remove_job(&context.job_id)?;
                     continue;
                 }
             }
