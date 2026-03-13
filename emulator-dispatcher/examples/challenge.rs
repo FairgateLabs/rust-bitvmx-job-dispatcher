@@ -8,7 +8,7 @@ use tracing::error;
 // 3. Then run the job-dispatcher
 //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1
 // 4. Then trigger one execution
-//      cargo run --release --example challenge --features "emulator"
+//      cargo run --release --example challenge
 pub mod emulator {
     use std::fs;
 
