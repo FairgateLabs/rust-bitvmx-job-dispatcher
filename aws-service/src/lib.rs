@@ -65,9 +65,10 @@ impl DispatcherHandler {
                 rt.block_on(dispatcher.download_file(&s3_client, &context))?;
                 let job_id = &context.job_id;
                 if let Some(result) = dispatcher.process_result(&job_id) {
-                    if let Err(e) = message_channel
-                        .send(&id, ResultMessage::new(job_id.clone(), result).to_string()?)
-                    {
+                    if let Err(e) = message_channel.send(
+                        &id,
+                        ResultMessage::new(job_id.clone(), result, false).to_string()?,
+                    ) {
                         error!("Failed to send result: {}", e);
                     }
                 }
@@ -186,7 +187,7 @@ impl DispatcherHandler {
                     debug!("Processed result for job ID: {}", job_id);
                     if let Err(e) = self.channel.send(
                         &id.clone().unwrap(),
-                        ResultMessage::new(job_id.clone(), result).to_string()?,
+                        ResultMessage::new(job_id.clone(), result, false).to_string()?,
                     ) {
                         error!("Failed to send result: {}", e);
                     }
