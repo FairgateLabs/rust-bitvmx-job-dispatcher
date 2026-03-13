@@ -8,5 +8,5 @@ members = [
     "jobtypes",
     "aws-service",
     "dispatcher-utils",
-    "test-helper",
+    "test-helper", "dispatcher-aws",
 ]

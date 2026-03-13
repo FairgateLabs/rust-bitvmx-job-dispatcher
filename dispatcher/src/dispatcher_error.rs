@@ -42,4 +42,8 @@ pub enum DispatcherError {
 
     #[error("Tracing error {0}")]
     TracingError(#[from] TryInitError),
+
+    #[cfg(feature = "aws")]
+    #[error("Aws Dispatcher error {0}")]
+    AwsDispatcherError(#[from] bitvmx_dispatcher_aws::errors::AwsDispatcherError),
 }

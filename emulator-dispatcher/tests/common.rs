@@ -16,7 +16,7 @@ pub fn start_emulator(
         let (channel, check_interval, storage) = config_broker(None, &storage_path);
 
         if let Err(e) =
-            dispatcher_loop::<EmulatorJobType>(channel, check_interval, running, storage)
+            dispatcher_loop::<EmulatorJobType>(channel, check_interval, running, storage, None)
         {
             return Err(format!("dispatcher error: {e}"));
         }

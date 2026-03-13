@@ -51,6 +51,10 @@ struct Command {
     /// Path to storage database
     #[arg(long, default_value = "temp-runs/storage_job.db")]
     storage_path: String,
+
+    // Path to dispatcher config file (only used for aws dispatcher)
+    #[arg(long, default_value = "./dispatcher-aws/config/config.yaml")]
+    config_path: Option<String>,
 }
 
 fn init_trace() -> Result<(), DispatcherError> {
@@ -66,7 +70,16 @@ fn init_trace() -> Result<(), DispatcherError> {
     Ok(())
 }
 
-pub fn init() -> Result<(DualChannel, Duration, Arc<AtomicBool>, Rc<Storage>), DispatcherError> {
+pub fn init() -> Result<
+    (
+        DualChannel,
+        Duration,
+        Arc<AtomicBool>,
+        Rc<Storage>,
+        Option<String>,
+    ),
+    DispatcherError,
+> {
     init_trace()?;
     let args = Command::parse();
 
@@ -101,5 +114,5 @@ pub fn init() -> Result<(DualChannel, Duration, Arc<AtomicBool>, Rc<Storage>), D
 
     let storage = get_storage_with_path(&args.storage_path)?;
 
-    Ok((channel, check_interval, running, storage))
+    Ok((channel, check_interval, running, storage, args.config_path))
 }

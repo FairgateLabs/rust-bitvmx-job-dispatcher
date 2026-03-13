@@ -49,13 +49,19 @@ pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     workers: Vec<(Child, Identifier, JobContext)>,
     storage: DispatcherStorage,
     _phantom_data: std::marker::PhantomData<T>,
+    #[cfg(feature = "aws")]
+    aws_handler: bitvmx_dispatcher_aws::aws_handler::AwsHandler,
 }
 
 impl<T> DispatcherHandler<T>
 where
     T: DispatcherMessage + DeserializeOwned,
 {
-    pub fn new(channel: DualChannel, storage: Rc<Storage>) -> Result<Self, DispatcherError> {
+    pub fn new(
+        channel: DualChannel,
+        storage: Rc<Storage>,
+        config: Option<String>,
+    ) -> Result<Self, DispatcherError> {
         let storage = DispatcherStorage::new(storage);
 
         let mut ok = Self {
@@ -63,6 +69,10 @@ where
             workers: Vec::new(),
             storage,
             _phantom_data: std::marker::PhantomData,
+            #[cfg(feature = "aws")]
+            aws_handler: bitvmx_dispatcher_aws::aws_handler::AwsHandler::new(
+                config.unwrap_or_default(),
+            )?,
         };
 
         ok.restore_jobs()?;
@@ -73,10 +83,11 @@ where
     pub fn new_with_path(
         channel: DualChannel,
         storage_path: &str,
+        config: Option<String>,
     ) -> Result<Self, DispatcherError> {
-        let config = StorageConfig::new(storage_path.to_string(), None);
-        let storage = Rc::new(Storage::new(&config)?);
-        Self::new(channel, storage)
+        let storage_config = StorageConfig::new(storage_path.to_string(), None);
+        let storage = Rc::new(Storage::new(&storage_config)?);
+        Self::new(channel, storage, config)
     }
 
     pub fn restore_jobs(&mut self) -> Result<(), DispatcherError> {
@@ -125,10 +136,15 @@ where
                 if self.storage.contains_job(&job.job_id())? {
                     warn!("Job with id {} already exists, skipping", job.job_id());
                 } else {
-                    let (child, context) = spawn_local_job(&job)?;
-                    self.storage
-                        .persist_job(&context.job_id, &msg.to_string())?;
-                    self.workers.push((child, msg.id.clone(), context));
+                    #[cfg(feature = "aws")]
+                    {}
+                    #[cfg(not(feature = "aws"))]
+                    {
+                        let (child, context) = spawn_local_job(&job)?;
+                        self.storage
+                            .persist_job(&context.job_id, &msg.to_string())?;
+                        self.workers.push((child, msg.id.clone(), context));
+                    }
                 }
             }
         }
@@ -274,9 +290,10 @@ pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned + std::fmt::Debug
     check_interval: Duration,
     running: Arc<AtomicBool>,
     storage: Rc<Storage>,
+    config: Option<String>,
 ) -> Result<(), DispatcherError> {
     let mut dispacher_handler: DispatcherHandler<T> =
-        DispatcherHandler::<T>::new(channel, storage)?;
+        DispatcherHandler::<T>::new(channel, storage, config)?;
 
     while running.load(Ordering::SeqCst) {
         dispacher_handler.tick()?;

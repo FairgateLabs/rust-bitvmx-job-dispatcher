@@ -17,6 +17,13 @@ bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git"
 rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.5.1" }
 env = "1.0.1"
 clap = { version = "4.5.32", features = ["derive"] }
+bitvmx-dispatcher-aws = { path = "../dispatcher-aws", optional = true }
+
 
 [dev-dependencies]
 config = "0.15.11"
+
+
+[features]
+default = []
+aws = ["bitvmx-dispatcher-aws"]

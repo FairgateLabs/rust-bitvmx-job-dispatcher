@@ -3,8 +3,8 @@ use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
 use tracing::info;
 
 fn main() -> Result<(), anyhow::Error> {
-    let (channel, check_interval, running, storage) = init()?;
-    dispatcher_loop::<EmulatorJobType>(channel, check_interval, running, storage)?;
+    let (channel, check_interval, running, storage, config) = init()?;
+    dispatcher_loop::<EmulatorJobType>(channel, check_interval, running, storage, config)?;
 
     info!("Shutting down...");
 
