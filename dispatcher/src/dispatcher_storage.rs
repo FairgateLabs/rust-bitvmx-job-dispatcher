@@ -1,21 +1,21 @@
-use std::{collections::HashMap, process::Child, rc::Rc};
+use std::rc::Rc;
 
 use bitvmx_broker::identification::identifier::Identifier;
-use bitvmx_dispatcher_utils::Msg;
-use serde::de::DeserializeOwned;
 use storage_backend::storage::{KeyValueStore, Storage};
-use tracing::info;
 
-use crate::{
-    dispatcher_error::DispatcherError,
-    dispatcher_message::DispatcherMessage,
-    dispatcher_module::{is_expected_type, JobContext},
-    helper::{job_key, process_msg},
-};
+use crate::dispatcher_error::DispatcherError;
 
 /// Persists and restores jobs from Storage.
 pub struct DispatcherStorage {
     storage: Rc<Storage>,
+}
+
+pub fn job_key(job_id: &str) -> String {
+    format!("job_{}", job_id)
+}
+
+pub fn result_key(job_id: &str) -> String {
+    format!("result_{}", job_id)
 }
 
 impl DispatcherStorage {
@@ -47,7 +47,13 @@ impl DispatcherStorage {
 
     pub fn list_jobs(&self) -> Result<Vec<String>, DispatcherError> {
         let keys = self.storage.partial_compare_keys("job_")?;
-        Ok(keys)
+        keys.iter()
+            .map(|key| {
+                key.strip_prefix("job_")
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| DispatcherError::JobIdNotFound(key.clone()))
+            })
+            .collect()
     }
 
     pub fn job_completed(&self, job_id: &str, result: &str) -> Result<(), DispatcherError> {
@@ -56,43 +62,36 @@ impl DispatcherStorage {
         Ok(())
     }
 
-    pub fn restore_jobs<T>(
+    pub fn save_result(
         &self,
-        jobs: &mut HashMap<String, T>,
-    ) -> Result<Vec<(Child, Identifier, JobContext)>, DispatcherError>
-    where
-        T: DispatcherMessage + DeserializeOwned,
-    {
-        let mut workers = Vec::new();
+        job_id: &str,
+        result: (String, Identifier),
+    ) -> Result<(), DispatcherError> {
+        let key = result_key(job_id);
+        self.storage.set(&key, result, None)?;
+        Ok(())
+    }
 
-        // list all keys starting with job_
-        let keys = self.storage.partial_compare_keys("job_").unwrap_or(vec![]);
+    pub fn get_results(&self) -> Result<Vec<(String, (String, Identifier))>, DispatcherError> {
+        let mut results = Vec::new();
+        let keys = self.storage.partial_compare_keys("result_")?;
 
-        for key in keys {
-            let raw = match self.storage.get::<_, String>(&key) {
-                Ok(Some(val)) => val.to_string(),
-                _ => continue,
+        for jobs in keys {
+            let result: (String, Identifier) = match self.storage.get(&jobs)? {
+                Some(res) => res,
+                None => continue,
             };
-            info!("Restoring job from key {}: {}", key, raw);
-            let msg = Msg::from_string(&raw)?;
+            let job_id = jobs.strip_prefix("result_").unwrap_or(&jobs).to_string();
 
-            let (child, context) = process_msg(jobs, &msg.raw)?;
-
-            // if command file exists and corresponds to this same job, skip restoring
-            if let Ok(buf) = std::fs::read_to_string(&context.result_file) {
-                if is_expected_type(jobs, &context.job_id, &buf) {
-                    info!(
-                        "Job {:?} was already completed (command file exists and matches expected type), skipping restore",
-                        context.job_id
-                    );
-                    jobs.remove(&context.job_id);
-                    continue;
-                }
-            }
-
-            workers.push((child, msg.id, context));
+            results.push((job_id, result));
         }
 
-        Ok(workers)
+        Ok(results)
+    }
+
+    pub fn remove_result(&self, job_id: &str) -> Result<(), DispatcherError> {
+        let key = result_key(job_id);
+        self.storage.remove(&key, None)?;
+        Ok(())
     }
 }
