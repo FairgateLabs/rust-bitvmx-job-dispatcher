@@ -62,13 +62,16 @@ impl DispatcherStorage {
         Ok(())
     }
 
-    pub fn save_result(
+    pub fn complete_job(
         &self,
         job_id: &str,
         result: (String, Identifier),
     ) -> Result<(), DispatcherError> {
         let key = result_key(job_id);
-        self.storage.set(&key, result, None)?;
+        let tx = Some(self.storage.begin_transaction());
+        self.storage.set(&key, result, tx)?;
+        self.storage.remove(&job_key(job_id), tx)?;
+        self.storage.commit_transaction(tx.unwrap())?;
         Ok(())
     }
 

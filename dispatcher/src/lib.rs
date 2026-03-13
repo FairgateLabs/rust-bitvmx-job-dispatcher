@@ -217,8 +217,7 @@ where
                                     .to_string()?;
 
                             self.storage
-                                .save_result(&context.job_id, (result_message, id.clone()))?;
-                            self.storage.remove_job(&context.job_id)?;
+                                .complete_job(&context.job_id, (result_message, id.clone()))?;
 
                             Ok(false)
                         }
@@ -232,8 +231,7 @@ where
                             )
                             .to_string()?;
                             self.storage
-                                .save_result(&context.job_id, (result_message, id.clone()))?;
-                            self.storage.remove_job(&context.job_id)?;
+                                .complete_job(&context.job_id, (result_message, id.clone()))?;
                             Ok(false)
                         }
                     }
