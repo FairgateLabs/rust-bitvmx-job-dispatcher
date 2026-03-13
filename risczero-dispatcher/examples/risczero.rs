@@ -1,5 +1,8 @@
 mod prover {
-    use bitvmx_job_dispatcher::dispatcher_job::DispatcherJob;
+    use std::fs;
+
+    use bitvmx_broker::{identification::identifier::Identifier, rpc::tls_helper::Cert};
+    use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
     use test_helper::test_helper::{configure_example_broker, wait_for_result, Paths};
     use zk_result::ResultType as ProverResultType;
@@ -7,16 +10,23 @@ mod prover {
     // To make this example work, you need to:
     // 1. Go to the `rust-bitvmx-zk-proof` folder and follow the instructions in README.md
     //    until the step "Template Setup"
-    // 3. run the server example first.
-    //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1
-    // 4. Then run the job-dispatcher
-    //      cargo run --release --features "prover"
-    // 5. Then trigger one execution
-    //      cargo run --release --example risczero --features "prover"
-
+    // 2. run the server example first (from bitvmx-broker).
+    //      cargo run --release --example server -- --port 10000
+    // 3. Then run the job-dispatcher
+    //      cargo run --release --bin bitvmx-risczero-dispatcher -- --port 10000 --my-id 1
+    // 4. Then trigger one execution
+    //      cargo run --release --example risczero
     pub(crate) fn run_proof() -> Result<(), anyhow::Error> {
         let paths = Paths::new("");
-        let (channel, emulator_id) = configure_example_broker(&paths, 10000)?;
+        let (channel, _) = configure_example_broker(&paths, 10000)?;
+
+        let privk = fs::read_to_string("../rust-bitvmx-client/config/keys/prover.key")?;
+        let dest_id = 1;
+        let cert = Cert::new_with_privk(&privk)?;
+        let dest_id = Identifier {
+            pubkey_hash: cert.get_pubk_hash()?,
+            id: dest_id,
+        };
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
@@ -26,10 +36,16 @@ mod prover {
                 ".".to_string(),
             ),
         })?;
-        channel.send(&emulator_id, msg)?;
+        channel.send(&dest_id, msg)?;
 
         let result = wait_for_result(&channel, 1000, 1, |msg| {
-            ProverResultType::from_json_string(msg.to_string())
+            let parsed = ResultMessage::from_str(msg)?;
+            println!(
+                "Received message for jobid: {} restul: {}",
+                parsed.job_id, parsed.is_error
+            );
+
+            ProverResultType::from_json_string(parsed.result)
                 .map(Some)
                 .map_err(anyhow::Error::msg)
         })?;
