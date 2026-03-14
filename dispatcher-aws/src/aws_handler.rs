@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use aws_config::{BehaviorVersion, Region, SdkConfig};
 use aws_sdk_s3::config::Credentials;
 

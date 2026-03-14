@@ -1,4 +1,6 @@
 pub mod cli;
+#[cfg(feature = "aws")]
+pub mod dispatcher_aws;
 pub mod dispatcher_error;
 pub mod dispatcher_job;
 pub mod dispatcher_message;
@@ -47,10 +49,10 @@ impl JobContext {
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     channel: DualChannel,
     workers: Vec<(Child, Identifier, JobContext)>,
-    storage: DispatcherStorage,
+    storage: Rc<DispatcherStorage>,
     _phantom_data: std::marker::PhantomData<T>,
     #[cfg(feature = "aws")]
-    aws_handler: bitvmx_dispatcher_aws::aws_handler::AwsHandler,
+    aws: crate::dispatcher_aws::DispatcherAws,
 }
 
 impl<T> DispatcherHandler<T>
@@ -62,16 +64,19 @@ where
         storage: Rc<Storage>,
         config: Option<String>,
     ) -> Result<Self, DispatcherError> {
-        let storage = DispatcherStorage::new(storage);
+        let dispatcher_storage = Rc::new(DispatcherStorage::new(storage.clone()));
+
+        debug!("Initializing dispatcher handler with config: {:?}", config);
 
         let mut ok = Self {
             channel,
             workers: Vec::new(),
-            storage,
+            storage: dispatcher_storage.clone(),
             _phantom_data: std::marker::PhantomData,
             #[cfg(feature = "aws")]
-            aws_handler: bitvmx_dispatcher_aws::aws_handler::AwsHandler::new(
+            aws: crate::dispatcher_aws::DispatcherAws::new(
                 config.unwrap_or_default(),
+                dispatcher_storage.clone(),
             )?,
         };
 
@@ -102,8 +107,11 @@ where
             let msg = Msg::from_string(&original_msg)?;
             let job: DispatcherJob<T> = decode_msg(&msg.raw)?;
 
-            let (child, context) = spawn_local_job(&job)?;
-            self.workers.push((child, msg.id.clone(), context));
+            #[cfg(not(feature = "aws"))]
+            {
+                let (child, context) = spawn_local_job(&job)?;
+                self.workers.push((child, msg.id.clone(), context));
+            }
         }
 
         Ok(())
@@ -137,7 +145,9 @@ where
                     warn!("Job with id {} already exists, skipping", job.job_id());
                 } else {
                     #[cfg(feature = "aws")]
-                    {}
+                    {
+                        self.aws.spawn_aws_job(&job, msg)?;
+                    }
                     #[cfg(not(feature = "aws"))]
                     {
                         let (child, context) = spawn_local_job(&job)?;
@@ -151,6 +161,7 @@ where
         Ok(())
     }
 
+    #[cfg(not(feature = "aws"))]
     fn process_running_jobs(&mut self) -> Result<bool, DispatcherError> {
         let mut job_completed = false;
 
@@ -279,7 +290,11 @@ where
 
     pub fn tick(&mut self) -> Result<bool, DispatcherError> {
         self.create_new_jobs()?;
+        #[cfg(feature = "aws")]
+        let job_completed = self.aws.tick::<T>()?;
+        #[cfg(not(feature = "aws"))]
         let job_completed = self.process_running_jobs()?;
+
         self.send_results()?;
         Ok(job_completed)
     }
@@ -317,6 +332,7 @@ where
     Ok(msg)
 }
 
+#[cfg(not(feature = "aws"))]
 fn spawn_local_job<V>(msg: &DispatcherJob<V>) -> Result<(Child, JobContext), DispatcherError>
 where
     V: DispatcherMessage + DeserializeOwned,
@@ -332,6 +348,7 @@ where
     Ok((child, job_context))
 }
 
+#[cfg(not(feature = "aws"))]
 fn extract_structured_json(expected_type: &str, result: &str) -> Result<String, DispatcherError> {
     let parsed: serde_json::Value = serde_json::from_str(result)?;
     if parsed.get("type") == Some(&serde_json::Value::String(expected_type.to_string())) {
