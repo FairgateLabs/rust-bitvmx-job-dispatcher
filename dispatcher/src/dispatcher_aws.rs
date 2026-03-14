@@ -11,7 +11,7 @@ use crate::{
 
 pub struct DispatcherAws {
     pub handler: AwsHandler,
-    pub storage: Rc<DispatcherStorage>,
+    pub storage: DispatcherAwsStorage,
 }
 
 impl DispatcherAws {
@@ -20,6 +20,7 @@ impl DispatcherAws {
         storage: Rc<DispatcherStorage>,
     ) -> Result<Self, DispatcherError> {
         let handler = AwsHandler::new(config_path)?;
+        let storage = DispatcherAwsStorage::new(storage);
         Ok(Self { handler, storage })
     }
 
@@ -36,5 +37,15 @@ impl DispatcherAws {
     {
         //let job_context = self.handler.process_msg(msg);
         Ok(false)
+    }
+}
+
+pub struct DispatcherAwsStorage {
+    storage: Rc<DispatcherStorage>,
+}
+
+impl DispatcherAwsStorage {
+    pub fn new(storage: Rc<DispatcherStorage>) -> Self {
+        Self { storage }
     }
 }
