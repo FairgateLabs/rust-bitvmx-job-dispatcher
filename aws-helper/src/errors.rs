@@ -1,3 +1,4 @@
+use aws_sdk_s3::primitives::ByteStreamError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -22,6 +23,9 @@ pub enum AwsDispatcherError {
 
     #[error("S3 error {0}")]
     S3Error(#[from] aws_sdk_s3::Error),
+
+    #[error("Byte stream error {0}")]
+    ByteStreamError(#[from] ByteStreamError),
 
     #[error("Command execution failed")]
     CommandExecutionFailed,

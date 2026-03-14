@@ -45,5 +45,5 @@ pub enum DispatcherError {
 
     #[cfg(feature = "aws")]
     #[error("Aws Dispatcher error {0}")]
-    AwsDispatcherError(#[from] bitvmx_dispatcher_aws::errors::AwsDispatcherError),
+    AwsDispatcherError(#[from] bitvmx_aws_helper::errors::AwsDispatcherError),
 }

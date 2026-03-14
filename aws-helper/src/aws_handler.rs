@@ -13,6 +13,9 @@ pub struct AwsHandler {
     config: AppConfig,
     aws_config: SdkConfig,
     runtime: tokio::runtime::Runtime,
+    ec2_client: Ec2Client,
+    ssm_client: SsmClient,
+    s3_client: S3Client,
 }
 
 impl AwsHandler {
@@ -36,29 +39,28 @@ impl AwsHandler {
                 .await
         });
 
+        let (ec2_client, ssm_client, s3_client) = (
+            Ec2Client::new(&aws_config),
+            SsmClient::new(&aws_config),
+            S3Client::new(&aws_config),
+        );
+
         Ok(Self {
             config,
             aws_config,
             runtime,
+            ec2_client,
+            ssm_client,
+            s3_client,
         })
     }
 
-    pub fn create_clients(&self) -> (Ec2Client, SsmClient, S3Client) {
-        let ec2_client = Ec2Client::new(&self.aws_config);
-        let ssm_client = SsmClient::new(&self.aws_config);
-        let s3_client = S3Client::new(&self.aws_config);
-
-        (ec2_client, ssm_client, s3_client)
-    }
-
     pub fn create_instance(&self, name: &str) -> Result<String, AwsDispatcherError> {
-        let (ec2_client, ..) = self.create_clients();
-
         let instance_type = InstanceType::from(self.config.ec2.instance_type.as_str());
         let run_response = self
             .runtime
             .block_on(
-                ec2_client
+                self.ec2_client
                     .run_instances()
                     .image_id(self.config.ec2.image_id.clone())
                     .instance_type(instance_type)
@@ -92,15 +94,75 @@ impl AwsHandler {
 
     pub fn terminate_instance(&self, instance_id: &str) -> Result<(), AwsDispatcherError> {
         info!("Terminating instance: {}", instance_id);
-        let (ec2_client, ..) = self.create_clients();
         self.runtime
             .block_on(
-                ec2_client
+                self.ec2_client
                     .terminate_instances()
                     .instance_ids(instance_id)
                     .send(),
             )
             .map_err(|e| AwsDispatcherError::Ec2Error(e.into()))?;
+
+        Ok(())
+    }
+
+    pub fn upload_file(&self, key: &str, data: Vec<u8>) -> Result<(), AwsDispatcherError> {
+        let bucket = &self.config.s3.bucket;
+
+        self.runtime
+            .block_on(
+                self.s3_client
+                    .put_object()
+                    .bucket(bucket)
+                    .key(key)
+                    .body(data.into())
+                    .send(),
+            )
+            .map_err(|e| AwsDispatcherError::S3Error(e.into()))?;
+
+        info!("File uploaded to S3: s3://{}/{}", bucket, &key);
+
+        Ok(())
+    }
+
+    pub fn download_file(&self, key: &str) -> Result<Vec<u8>, AwsDispatcherError> {
+        info!(
+            "Downloading file from S3: s3://{}/{}",
+            self.config.s3.bucket, key
+        );
+        let bucket = &self.config.s3.bucket;
+
+        let get_response = self
+            .runtime
+            .block_on(self.s3_client.get_object().bucket(bucket).key(key).send())
+            .map_err(|e| AwsDispatcherError::S3Error(e.into()))?;
+
+        let data = self
+            .runtime
+            .block_on(get_response.body.collect())
+            .map_err(|e| AwsDispatcherError::ByteStreamError(e.into()))?
+            .into_bytes()
+            .to_vec();
+
+        info!("File downloaded from S3: s3://{}/{}", bucket, &key);
+
+        Ok(data)
+    }
+
+    pub fn delete_file(&self, key: &str) -> Result<(), AwsDispatcherError> {
+        let bucket = &self.config.s3.bucket;
+
+        self.runtime
+            .block_on(
+                self.s3_client
+                    .delete_object()
+                    .bucket(bucket)
+                    .key(key)
+                    .send(),
+            )
+            .map_err(|e| AwsDispatcherError::S3Error(e.into()))?;
+
+        info!("File deleted from S3: s3://{}/{}", bucket, &key);
 
         Ok(())
     }

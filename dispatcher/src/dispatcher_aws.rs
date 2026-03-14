@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use bitvmx_dispatcher_aws::aws_handler::AwsHandler;
+use bitvmx_aws_helper::aws_handler::AwsHandler;
 use bitvmx_dispatcher_utils::Msg;
 use serde::de::DeserializeOwned;
 
