@@ -1,7 +1,10 @@
-use aws_config::{BehaviorVersion, Region, SdkConfig};
+use aws_config::{BehaviorVersion, Region};
 use aws_sdk_ec2::{
     Client as Ec2Client,
-    types::{IamInstanceProfileSpecification, InstanceType, ResourceType, Tag, TagSpecification},
+    types::{
+        IamInstanceProfileSpecification, InstanceStateName, InstanceType, ResourceType,
+        SummaryStatus, Tag, TagSpecification,
+    },
 };
 use aws_sdk_s3::{Client as S3Client, config::Credentials};
 use aws_sdk_ssm::Client as SsmClient;
@@ -11,11 +14,17 @@ use crate::{config::AppConfig, errors::AwsDispatcherError};
 
 pub struct AwsHandler {
     config: AppConfig,
-    aws_config: SdkConfig,
     runtime: tokio::runtime::Runtime,
     ec2_client: Ec2Client,
     ssm_client: SsmClient,
     s3_client: S3Client,
+}
+
+#[derive(Debug)]
+pub struct CompleteStatus {
+    pub state: InstanceStateName,
+    pub system_status: SummaryStatus,
+    pub instance_status: SummaryStatus,
 }
 
 impl AwsHandler {
@@ -47,7 +56,6 @@ impl AwsHandler {
 
         Ok(Self {
             config,
-            aws_config,
             runtime,
             ec2_client,
             ssm_client,
@@ -165,5 +173,116 @@ impl AwsHandler {
         info!("File deleted from S3: s3://{}/{}", bucket, &key);
 
         Ok(())
+    }
+
+    pub fn send_command(
+        &self,
+        instance_id: &str,
+        command: Vec<String>,
+    ) -> Result<String, AwsDispatcherError> {
+        let command = self
+            .runtime
+            .block_on(
+                self.ssm_client
+                    .send_command()
+                    .instance_ids(instance_id)
+                    .document_name("AWS-RunShellScript")
+                    .parameters("commands", command)
+                    .send(),
+            )
+            .map_err(|e| AwsDispatcherError::SsmError(e.into()))?;
+
+        let command_id = command
+            .command()
+            .and_then(|c| c.command_id())
+            .ok_or_else(|| {
+                error!("No command ID returned from send_command response");
+                AwsDispatcherError::CommandIdNotFound
+            })?;
+
+        info!("Command sent. ID: {}", command_id);
+
+        Ok(command_id.to_string())
+    }
+
+    pub fn get_instance_status(
+        &self,
+        instance_id: &str,
+    ) -> Result<Option<CompleteStatus>, AwsDispatcherError> {
+        let describe_response = self
+            .runtime
+            .block_on(
+                self.ec2_client
+                    .describe_instance_status()
+                    .instance_ids(instance_id)
+                    .send(),
+            )
+            .map_err(|e| AwsDispatcherError::Ec2Error(e.into()))?;
+
+        if describe_response
+            .instance_statuses
+            .as_ref()
+            .is_none_or(|x| x.len() != 1)
+        {
+            return Ok(None);
+        }
+
+        let instance_status = describe_response.instance_statuses.as_ref().unwrap().get(0);
+
+        let state = instance_status
+            .and_then(|s| s.instance_state())
+            .and_then(|s| s.name())
+            .ok_or_else(|| AwsDispatcherError::InstanceNotRunning)?;
+
+        let system_status = instance_status
+            .and_then(|s| s.system_status())
+            .and_then(|s| s.status())
+            .ok_or_else(|| AwsDispatcherError::InstanceNotRunning)?;
+
+        let instance_status = instance_status
+            .and_then(|s| s.instance_status())
+            .and_then(|s| s.status())
+            .ok_or_else(|| AwsDispatcherError::InstanceNotRunning)?;
+
+        Ok(Some(CompleteStatus {
+            state: state.to_owned(),
+            system_status: system_status.to_owned(),
+            instance_status: instance_status.to_owned(),
+        }))
+    }
+
+    pub fn is_instance_ready(&self, instance_id: &str) -> Result<bool, AwsDispatcherError> {
+        let status = self.get_instance_status(instance_id)?;
+        info!("Instance status for {}: {:?}", instance_id, status);
+        if let Some(status) = status {
+            if status.state == InstanceStateName::Running
+                && status.system_status == SummaryStatus::Ok
+                && status.instance_status == SummaryStatus::Ok
+            {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    pub fn wait_for_instance_ready(
+        &self,
+        instance_id: &str,
+        timeout_secs: u64,
+    ) -> Result<bool, AwsDispatcherError> {
+        let start_time = std::time::Instant::now();
+        loop {
+            if self.is_instance_ready(instance_id)? {
+                return Ok(true);
+            }
+            if start_time.elapsed().as_secs() >= timeout_secs {
+                return Ok(false);
+            }
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
+
+    pub fn obtain_max_running_instances(&self) -> usize {
+        self.config.ec2.max_running_instances
     }
 }

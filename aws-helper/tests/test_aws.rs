@@ -27,3 +27,19 @@ fn test_s3_file() {
     aws_handler.delete_file(key).unwrap();
     assert_eq!(data, downloaded_data);
 }
+
+#[test]
+#[ignore]
+fn test_wait_running() {
+    init_trace();
+
+    let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
+    let aws_handler = AwsHandler::new(config_path).unwrap();
+    let instance_id = aws_handler.create_instance("test-instance").unwrap();
+
+    let ready = aws_handler
+        .wait_for_instance_ready(&instance_id, 300)
+        .unwrap();
+    aws_handler.terminate_instance(&instance_id).unwrap();
+    assert!(ready, "Instance did not become ready within the timeout");
+}
