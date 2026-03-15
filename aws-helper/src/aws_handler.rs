@@ -7,7 +7,7 @@ use aws_sdk_ec2::{
     },
 };
 use aws_sdk_s3::{Client as S3Client, config::Credentials};
-use aws_sdk_ssm::Client as SsmClient;
+use aws_sdk_ssm::{Client as SsmClient, types::CommandInvocationStatus};
 use tracing::{error, info};
 
 use crate::{config::AppConfig, errors::AwsDispatcherError};
@@ -25,6 +25,14 @@ pub struct CompleteStatus {
     pub state: InstanceStateName,
     pub system_status: SummaryStatus,
     pub instance_status: SummaryStatus,
+}
+
+#[derive(Debug)]
+pub enum CommandStatus {
+    Success(String),
+    InProgress(String),
+    Failed(String, String),
+    NotFound,
 }
 
 impl AwsHandler {
@@ -205,6 +213,57 @@ impl AwsHandler {
         Ok(command_id.to_string())
     }
 
+    pub fn get_command_status(
+        &self,
+        instance_id: &str,
+        command_id: &str,
+    ) -> Result<CommandStatus, AwsDispatcherError> {
+        let invocation = self
+            .runtime
+            .block_on(
+                self.ssm_client
+                    .get_command_invocation()
+                    .command_id(command_id)
+                    .instance_id(instance_id)
+                    .send(),
+            )
+            .map_err(|e| AwsDispatcherError::SsmError(e.into()))?;
+
+        let status = match invocation.status() {
+            Some(status) => match status {
+                CommandInvocationStatus::Success => CommandStatus::Success(
+                    invocation
+                        .execution_elapsed_time()
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+                CommandInvocationStatus::InProgress
+                | CommandInvocationStatus::Pending
+                | CommandInvocationStatus::Delayed => CommandStatus::InProgress(
+                    invocation
+                        .execution_elapsed_time()
+                        .unwrap_or("")
+                        .to_string(),
+                ),
+                _ => CommandStatus::Failed(
+                    invocation
+                        .execution_elapsed_time()
+                        .unwrap_or("")
+                        .to_string(),
+                    invocation
+                        .standard_error_content()
+                        .unwrap_or("no-err")
+                        .to_string(),
+                ),
+            },
+            None => CommandStatus::NotFound,
+        };
+
+        info!("Command status for {}: {:?}", command_id, status);
+
+        Ok(status)
+    }
+
     pub fn get_instance_status(
         &self,
         instance_id: &str,
@@ -278,11 +337,46 @@ impl AwsHandler {
             if start_time.elapsed().as_secs() >= timeout_secs {
                 return Ok(false);
             }
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            std::thread::sleep(std::time::Duration::from_secs(5));
         }
+    }
+
+    pub fn is_command_finished(
+        &self,
+        instance_id: &str,
+        command_id: &str,
+    ) -> Result<bool, AwsDispatcherError> {
+        let status = self.get_command_status(instance_id, command_id)?;
+        Ok(matches!(
+            status,
+            CommandStatus::Success(_) | CommandStatus::Failed(_, _)
+        ))
+    }
+
+    pub fn wait_for_command_finished(
+        &self,
+        instance_id: &str,
+        command_id: &str,
+        timeout_secs: u64,
+    ) -> Result<CommandStatus, AwsDispatcherError> {
+        let start_time = std::time::Instant::now();
+        while !self.is_command_finished(instance_id, command_id)? {
+            if start_time.elapsed().as_secs() >= timeout_secs {
+                return Ok(CommandStatus::Failed(
+                    "Timeout".to_string(),
+                    "Command did not finish within the timeout".to_string(),
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_secs(5));
+        }
+        self.get_command_status(instance_id, command_id)
     }
 
     pub fn obtain_max_running_instances(&self) -> usize {
         self.config.ec2.max_running_instances
+    }
+
+    pub fn bucket_name(&self) -> &str {
+        &self.config.s3.bucket
     }
 }
