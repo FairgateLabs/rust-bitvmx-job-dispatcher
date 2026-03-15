@@ -8,7 +8,7 @@ fn test_create_instance() {
 
     let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
     let aws_handler = AwsHandler::new(config_path).unwrap();
-    let instance_id = aws_handler.create_instance("test-instance").unwrap();
+    let instance_id = aws_handler.create_instance("test-create-instance").unwrap();
     aws_handler.terminate_instance(&instance_id).unwrap();
 }
 
@@ -35,7 +35,7 @@ fn test_wait_running() {
 
     let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
     let aws_handler = AwsHandler::new(config_path).unwrap();
-    let instance_id = aws_handler.create_instance("test-instance").unwrap();
+    let instance_id = aws_handler.create_instance("test-wait-running`").unwrap();
 
     let ready = aws_handler
         .wait_for_instance_ready(&instance_id, 300)
@@ -51,7 +51,7 @@ fn test_execution() {
 
     let config_path = format!("{}/config/config.yaml", env!("CARGO_MANIFEST_DIR"));
     let aws_handler = AwsHandler::new(config_path).unwrap();
-    let instance_id = aws_handler.create_instance("test-instance").unwrap();
+    let instance_id = aws_handler.create_instance("test-execution").unwrap();
 
     let ready = aws_handler
         .wait_for_instance_ready(&instance_id, 300)
