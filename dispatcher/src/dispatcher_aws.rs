@@ -105,7 +105,25 @@ impl DispatcherAws {
                 );
                 let (job, _) = self.get_job::<T>(&instance.job_id)?;
                 let command = job.job_type().command()?;
-                let mut full_command = vec![command.0.clone()];
+
+                let mut full_command = vec![];
+
+                for (data, fname) in job.job_type().prepare_remote_input()? {
+                    let remote_key = format!("{}/{}", instance.job_id, fname);
+
+                    self.handler.upload_file(&remote_key, data)?;
+
+                    full_command.push(format!(
+                        "aws s3 cp s3://{}/{}/{} {}",
+                        self.handler.bucket_name(),
+                        instance.job_id,
+                        remote_key,
+                        fname
+                    ));
+                }
+
+                // command, args
+                full_command.push(command.0.clone());
                 full_command.extend(command.1.clone());
 
                 // Upload result to s3 after execution
@@ -189,6 +207,11 @@ impl DispatcherAws {
 
                         self.handler.terminate_instance(&instance.instance_id)?;
                         self.handler.delete_file(&result_file)?;
+
+                        for (_data, fname) in job.job_type().prepare_remote_input()? {
+                            let remote_key = format!("{}/{}", instance.job_id, fname);
+                            self.handler.delete_file(&remote_key)?;
+                        }
 
                         self.storage.remove_instance(&instance.instance_id)?;
                     }
@@ -342,6 +365,11 @@ mod tests {
     }
 
     impl DispatcherMessage for EchoMessage {
+        fn prepare_remote_input(&self) -> Result<Vec<(Vec<u8>, String)>, DispatcherError> {
+            let data = "something to upload";
+            Ok(vec![(data.as_bytes().to_vec(), "input.txt".to_string())])
+        }
+
         fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
             Ok((
                 "sh".to_string(),
