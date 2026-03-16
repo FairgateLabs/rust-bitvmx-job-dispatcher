@@ -1,15 +1,18 @@
 use std::rc::Rc;
 
-use bitvmx_aws_helper::aws_handler::AwsHandler;
+use bitvmx_aws_helper::aws_handler::{AwsHandler, CommandStatus};
 use bitvmx_broker::identification::identifier::Identifier;
 use bitvmx_dispatcher_utils::Msg;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use storage_backend::storage::{KeyValueStore, Storage};
-use tracing::info;
+use tracing::{error, info};
 
 use crate::{
-    decode_msg, dispatcher_error::DispatcherError, dispatcher_job::DispatcherJob,
-    dispatcher_message::DispatcherMessage, dispatcher_storage::DispatcherStorage,
+    decode_msg,
+    dispatcher_error::DispatcherError,
+    dispatcher_job::{DispatcherJob, ResultMessage},
+    dispatcher_message::DispatcherMessage,
+    dispatcher_storage::DispatcherStorage,
     extract_structured_json,
 };
 
@@ -148,38 +151,61 @@ impl DispatcherAws {
 
         for instance in instances {
             if let Some(command_id) = &instance.command_id {
-                if self
+                let command_status = self
                     .handler
-                    .is_command_finished(&instance.instance_id, command_id)?
-                {
-                    info!(
-                        "Job {} on instance {} completed",
-                        instance.job_id, instance.instance_id
-                    );
+                    .get_command_status(&instance.instance_id, command_id)?;
+                match command_status {
+                    CommandStatus::Success(_) => {
+                        info!(
+                            "Job {} on instance {} completed",
+                            instance.job_id, instance.instance_id
+                        );
 
-                    let (job, id) = self.get_job::<T>(&instance.job_id)?;
+                        let (job, id) = self.get_job::<T>(&instance.job_id)?;
 
-                    let job_type = job.job_type();
+                        let job_type = job.job_type();
 
-                    let result_file = format!("{}/{}", instance.job_id, command_id);
+                        let result_file = format!("{}/{}", instance.job_id, command_id);
 
-                    let raw_result = self.handler.download_file(&format!(
-                        "{}/{}",
-                        instance.job_id,
-                        job_type.command().unwrap().2
-                    ))?;
+                        let raw_result = self.handler.download_file(&format!(
+                            "{}/{}",
+                            instance.job_id,
+                            job_type.command().unwrap().2
+                        ))?;
 
-                    let str_result = String::from_utf8(raw_result)?;
-                    let result = extract_structured_json(&job_type.message_type(), &str_result)?;
+                        let str_result = String::from_utf8(raw_result)?;
+                        let result =
+                            extract_structured_json(&job_type.message_type(), &str_result)?;
 
-                    self.storage
-                        .storage
-                        .complete_job(&instance.job_id, (result, id))?;
+                        let rm = ResultMessage::new(instance.job_id.clone(), result, false);
 
-                    self.handler.terminate_instance(&instance.instance_id)?;
-                    self.handler.delete_file(&result_file)?;
+                        self.storage
+                            .storage
+                            .complete_job(&instance.job_id, (rm.to_string()?, id))?;
 
-                    self.storage.remove_instance(&instance.instance_id)?;
+                        self.handler.terminate_instance(&instance.instance_id)?;
+                        self.handler.delete_file(&result_file)?;
+
+                        self.storage.remove_instance(&instance.instance_id)?;
+                    }
+                    CommandStatus::Failed(_, err) => {
+                        error!(
+                            "Job {} on instance {} failed with error: {}",
+                            instance.job_id, instance.instance_id, err
+                        );
+
+                        let rm = ResultMessage::new(instance.job_id.clone(), err, true);
+
+                        let (_job, id) = self.get_job::<T>(&instance.job_id)?;
+
+                        self.storage
+                            .storage
+                            .complete_job(&instance.job_id, (rm.to_string()?, id))?;
+
+                        self.handler.terminate_instance(&instance.instance_id)?;
+                        self.storage.remove_instance(&instance.instance_id)?;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -317,7 +343,7 @@ mod tests {
                 "sh".to_string(),
                 vec![
                     "-c".to_string(),
-                    format!("echo {} >output.json", self.content),
+                    format!("echo {{ \"type\": \"echo\", \"data\": \" {{ \"result\" : \"{}\" }}\" }} >output.json", self.content),
                 ],
                 "output.json".to_string(),
             ))
