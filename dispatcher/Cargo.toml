@@ -25,5 +25,5 @@ config = "0.15.11"
 test-helper = { path = "../test-helper" }
 
 [features]
-default = ["aws"]
+default = []
 aws = ["bitvmx-aws-helper"]

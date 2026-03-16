@@ -48,7 +48,6 @@ impl JobContext {
 }
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     channel: DualChannel,
-    #[cfg(not(feature = "aws"))]
     workers: Vec<(Child, Identifier, JobContext)>,
     storage: Rc<DispatcherStorage>,
     _phantom_data: std::marker::PhantomData<T>,
@@ -69,9 +68,8 @@ where
 
         debug!("Initializing dispatcher handler with config: {:?}", config);
 
-        let mut ok = Self {
+        let ret = Self {
             channel,
-            #[cfg(not(feature = "aws"))]
             workers: Vec::new(),
             storage: dispatcher_storage.clone(),
             _phantom_data: std::marker::PhantomData,
@@ -82,9 +80,14 @@ where
             )?,
         };
 
-        ok.restore_jobs()?;
-
-        Ok(ok)
+        #[cfg(not(feature = "aws"))]
+        {
+            let mut ret = ret;
+            ret.restore_jobs()?;
+            Ok(ret)
+        }
+        #[cfg(feature = "aws")]
+        Ok(ret)
     }
 
     pub fn new_with_path(
@@ -97,7 +100,8 @@ where
         Self::new(channel, storage, config)
     }
 
-    pub fn restore_jobs(&mut self) -> Result<(), DispatcherError> {
+    #[allow(dead_code)]
+    fn restore_jobs(&mut self) -> Result<(), DispatcherError> {
         let keys = self.storage.list_jobs()?;
 
         for key in keys {
@@ -108,12 +112,8 @@ where
             info!("Restoring job from key {}: {}", key, &original_msg);
             let msg = Msg::from_string(&original_msg)?;
             let job: DispatcherJob<T> = decode_msg(&msg.raw)?;
-
-            #[cfg(not(feature = "aws"))]
-            {
-                let (child, context) = spawn_local_job(&job)?;
-                self.workers.push((child, msg.id.clone(), context));
-            }
+            let (child, context) = spawn_local_job(&job)?;
+            self.workers.push((child, msg.id.clone(), context));
         }
 
         Ok(())
@@ -158,7 +158,7 @@ where
         Ok(())
     }
 
-    #[cfg(not(feature = "aws"))]
+    #[allow(dead_code)]
     fn process_running_jobs(&mut self) -> Result<bool, DispatcherError> {
         let mut job_completed = false;
 
@@ -329,11 +329,12 @@ where
     Ok(msg)
 }
 
-#[cfg(not(feature = "aws"))]
+#[allow(dead_code)]
 fn spawn_local_job<V>(msg: &DispatcherJob<V>) -> Result<(Child, JobContext), DispatcherError>
 where
     V: DispatcherMessage + DeserializeOwned,
 {
+    msg.job_type().prepare_local_input()?;
     let (cmd, args, command_file) = msg.job_type.command()?;
     let cmd = resolve_command_path(&cmd)?;
     info!("Command: {:?}", cmd);
