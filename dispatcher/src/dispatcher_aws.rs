@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use bitvmx_aws_helper::aws_handler::AwsHandler;
+use bitvmx_broker::identification::identifier::Identifier;
 use bitvmx_dispatcher_utils::Msg;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use storage_backend::storage::{KeyValueStore, Storage};
@@ -67,6 +68,20 @@ impl DispatcherAws {
         Ok(None)
     }
 
+    fn get_job<T>(&self, job_id: &str) -> Result<(DispatcherJob<T>, Identifier), DispatcherError>
+    where
+        T: DispatcherMessage + DeserializeOwned,
+    {
+        let msg = self
+            .storage
+            .storage
+            .get_job(job_id)?
+            .ok_or(DispatcherError::JobIdNotFound(job_id.to_string()))?;
+        let msg = Msg::from_string(&msg)?;
+        let job: DispatcherJob<T> = decode_msg(&msg.raw)?;
+        Ok((job, msg.id))
+    }
+
     fn execute_job<T>(&self) -> Result<bool, DispatcherError>
     where
         T: DispatcherMessage + DeserializeOwned,
@@ -84,14 +99,7 @@ impl DispatcherAws {
                     "Executing job {} on instance {}",
                     instance.job_id, instance.instance_id
                 );
-                let msg = self
-                    .storage
-                    .storage
-                    .get_job(&instance.job_id)?
-                    .ok_or(DispatcherError::JobIdNotFound(instance.job_id.clone()))?;
-
-                let msg = Msg::from_string(&msg)?;
-                let job: DispatcherJob<T> = decode_msg(&msg.raw)?;
+                let (job, _) = self.get_job::<T>(&instance.job_id)?;
                 let command = job.job_type().command()?;
                 let mut full_command = vec![command.0.clone()];
                 full_command.extend(command.1.clone());
@@ -115,6 +123,43 @@ impl DispatcherAws {
         Ok(false)
     }
 
+    fn complete_jobs<T>(&self) -> Result<bool, DispatcherError>
+    where
+        T: DispatcherMessage + DeserializeOwned,
+    {
+        let instances = self
+            .storage
+            .get_all_instances()?
+            .iter()
+            .filter(|instance| instance.status == InstanceStatus::Running)
+            .cloned()
+            .collect::<Vec<InstanceInfo>>();
+
+        for instance in instances {
+            if let Some(command_id) = &instance.command_id {
+                if self
+                    .handler
+                    .is_command_finished(&instance.instance_id, command_id)?
+                {
+                    info!(
+                        "Job {} on instance {} completed",
+                        instance.job_id, instance.instance_id
+                    );
+
+                    let (_job, id) = self.get_job::<T>(&instance.job_id)?;
+                    //TODO: get results
+
+                    self.storage
+                        .storage
+                        .complete_job(&instance.job_id, ("completed".to_string(), id))?;
+                    self.handler.terminate_instance(&instance.instance_id)?;
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
     pub fn tick<T>(&self) -> Result<bool, DispatcherError>
     where
         T: DispatcherMessage + DeserializeOwned,
@@ -131,6 +176,7 @@ impl DispatcherAws {
         }
 
         self.execute_job::<T>()?;
+        self.complete_jobs::<T>()?;
 
         Ok(false)
     }
@@ -375,7 +421,7 @@ mod tests {
             .persist_job("1", &sample_msg().to_string())
             .unwrap();
 
-        for _ in 0..20 {
+        for _ in 0..30 {
             dispatcher.tick::<EchoMessage>().unwrap();
             std::thread::sleep(std::time::Duration::from_secs(10));
         }
