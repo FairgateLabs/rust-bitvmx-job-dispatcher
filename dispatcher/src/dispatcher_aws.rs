@@ -107,6 +107,7 @@ impl DispatcherAws {
                 let command = job.job_type().command()?;
 
                 let mut full_command = vec![];
+                full_command.push(format!("cd {}", self.handler.running_path()));
 
                 for (data, fname) in job.job_type().prepare_remote_input()? {
                     let remote_key = format!("{}/{}", instance.job_id, fname);

@@ -379,4 +379,8 @@ impl AwsHandler {
     pub fn bucket_name(&self) -> &str {
         &self.config.s3.bucket
     }
+
+    pub fn running_path(&self) -> &str {
+        &self.config.paths.repository_path
+    }
 }
