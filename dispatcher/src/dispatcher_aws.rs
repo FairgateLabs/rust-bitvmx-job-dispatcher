@@ -110,11 +110,11 @@ impl DispatcherAws {
 
                 // Upload result to s3 after execution
                 full_command.push(format!(
-                    "aws s3 cp s3://{}/{}/{} {}",
+                    "aws s3 cp {} s3://{}/{}/{}",
+                    command.2,
                     self.handler.bucket_name(),
                     instance.job_id,
                     command.2,
-                    command.2
                 ));
 
                 let command_id = self
@@ -165,19 +165,23 @@ impl DispatcherAws {
 
                         let job_type = job.job_type();
 
-                        let result_file = format!("{}/{}", instance.job_id, command_id);
+                        let result_file =
+                            &format!("{}/{}", instance.job_id, job_type.command().unwrap().2);
 
-                        let raw_result = self.handler.download_file(&format!(
-                            "{}/{}",
-                            instance.job_id,
-                            job_type.command().unwrap().2
-                        ))?;
+                        let raw_result = self.handler.download_file(result_file)?;
 
                         let str_result = String::from_utf8(raw_result)?;
-                        let result =
-                            extract_structured_json(&job_type.message_type(), &str_result)?;
+                        let result = extract_structured_json(&job_type.message_type(), &str_result);
 
-                        let rm = ResultMessage::new(instance.job_id.clone(), result, false);
+                        let rm = if let Ok(msg) = result {
+                            ResultMessage::new(instance.job_id.clone(), msg, false)
+                        } else {
+                            ResultMessage::new(
+                                instance.job_id.clone(),
+                                format!("Failed to extract structured JSON: {}", str_result),
+                                true,
+                            )
+                        };
 
                         self.storage
                             .storage
@@ -343,7 +347,7 @@ mod tests {
                 "sh".to_string(),
                 vec![
                     "-c".to_string(),
-                    format!("echo {{ \"type\": \"echo\", \"data\": \" {{ \"result\" : \"{}\" }}\" }} >output.json", self.content),
+                    format!("echo {{ \\\"type\\\": \\\"echo\\\", \\\"data\\\": {{ \\\"result\\\" : \\\"{}\\\" }} }} >output.json", self.content),
                 ],
                 "output.json".to_string(),
             ))
