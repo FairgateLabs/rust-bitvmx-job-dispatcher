@@ -67,21 +67,6 @@ impl DispatcherAws {
         Ok(None)
     }
 
-    /*
-    let instance_id = self.handler.create_instance("dispatcher-instance")?;
-    let instance_info = InstanceInfo::new(instance_id.clone(), "free".to_string());
-    self.storage.save_instance(&instance_id, &instance_info)?;
-    */
-
-    /*fn get_assigned_jobs(&self) -> Result<Vec<InstanceInfo>, DispatcherError> {
-        let mut assigned_jobs = Vec::new();
-        let instances = self.storage.get_instances()?;
-        for instance in &instances {
-            let info = self.storage.get_instance(instance)?.unwrap();
-        }
-        Ok(assigned_jobs)
-    }*/
-
     fn execute_job<T>(&self) -> Result<bool, DispatcherError>
     where
         T: DispatcherMessage + DeserializeOwned,
@@ -90,7 +75,7 @@ impl DispatcherAws {
             .storage
             .get_all_instances()?
             .iter()
-            .filter(|instance| instance.status == "init")
+            .filter(|instance| instance.status == InstanceStatus::Init)
             .cloned()
             .collect::<Vec<InstanceInfo>>();
         for mut instance in instances {
@@ -120,7 +105,7 @@ impl DispatcherAws {
                 );
 
                 instance.command_id = Some(command_id);
-                instance.status = "running".to_string();
+                instance.status = InstanceStatus::Running;
 
                 self.storage
                     .save_instance(&instance.instance_id.clone(), &instance)?;
@@ -141,7 +126,7 @@ impl DispatcherAws {
                 .create_instance(&format!("job-id-{}", job_id))?;
             self.storage.save_instance(
                 &instance_id,
-                &InstanceInfo::new(instance_id.clone(), "init".to_string(), job_id.clone()),
+                &InstanceInfo::new(instance_id.clone(), InstanceStatus::Init, job_id.clone()),
             )?;
         }
 
@@ -163,16 +148,22 @@ fn instances_key() -> String {
     "instances".to_string()
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum InstanceStatus {
+    Init,
+    Running,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct InstanceInfo {
     instance_id: String,
-    status: String,
+    status: InstanceStatus,
     job_id: String,
     command_id: Option<String>,
 }
 
 impl InstanceInfo {
-    pub fn new(instance_id: String, status: String, job_id: String) -> Self {
+    pub fn new(instance_id: String, status: InstanceStatus, job_id: String) -> Self {
         Self {
             instance_id,
             status,
@@ -313,7 +304,7 @@ mod tests {
 
         // same instance is reflected in the list of instances
         let id = "1234";
-        let status = InstanceInfo::new(id.to_string(), "running".to_string(), "1".to_string());
+        let status = InstanceInfo::new(id.to_string(), InstanceStatus::Running, "1".to_string());
         aws_storage.save_instance(id, &status).unwrap();
         let instances = aws_storage.get_instances().unwrap();
         assert_eq!(instances, vec![id.to_string()]);
@@ -329,7 +320,7 @@ mod tests {
 
         // create another instance and check the list of instances
         let id2 = "5678";
-        let status2 = InstanceInfo::new(id2.to_string(), "running".to_string(), "2".to_string());
+        let status2 = InstanceInfo::new(id2.to_string(), InstanceStatus::Running, "2".to_string());
         aws_storage.save_instance(id2, &status2).unwrap();
         let instances = aws_storage.get_all_instances().unwrap();
         assert_eq!(instances.len(), 2);
@@ -359,7 +350,7 @@ mod tests {
                 "instance-1",
                 &InstanceInfo::new(
                     "instance-1".to_string(),
-                    "init".to_string(),
+                    InstanceStatus::Init,
                     "1".to_string(),
                 ),
             )
