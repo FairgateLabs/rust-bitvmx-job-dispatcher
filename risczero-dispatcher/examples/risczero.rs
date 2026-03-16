@@ -1,7 +1,5 @@
 mod prover {
-    use std::fs;
 
-    use bitvmx_broker::{identification::identifier::Identifier, rpc::tls_helper::Cert};
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
     use test_helper::test_helper::{configure_example_broker, wait_for_result, Paths};

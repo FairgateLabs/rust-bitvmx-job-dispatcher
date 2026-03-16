@@ -1,5 +1,4 @@
 use std::{
-    path,
     sync::{atomic::AtomicBool, Arc},
     thread,
 };
