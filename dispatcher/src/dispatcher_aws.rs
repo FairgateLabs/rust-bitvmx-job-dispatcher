@@ -152,7 +152,10 @@ impl DispatcherAws {
                     self.storage
                         .storage
                         .complete_job(&instance.job_id, ("completed".to_string(), id))?;
+
                     self.handler.terminate_instance(&instance.instance_id)?;
+
+                    self.storage.remove_instance(&instance.instance_id)?;
                 }
             }
         }
@@ -259,6 +262,14 @@ impl DispatcherAwsStorage {
 
     pub fn get_instance(&self, instance_id: &str) -> Result<Option<InstanceInfo>, DispatcherError> {
         Ok(self.db().get(&instance_key(instance_id))?)
+    }
+
+    pub fn remove_instance(&self, instance_id: &str) -> Result<(), DispatcherError> {
+        self.db().remove(&instance_key(instance_id), None)?;
+        let mut instances = self.get_instances()?;
+        instances.retain(|id| id != instance_id);
+        self.db().set(&instances_key(), instances, None)?;
+        Ok(())
     }
 }
 
