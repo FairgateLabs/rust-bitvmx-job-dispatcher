@@ -372,7 +372,7 @@ impl AwsHandler {
         self.get_command_status(instance_id, command_id)
     }
 
-    pub fn obtain_max_running_instances(&self) -> usize {
+    pub fn get_max_running_instances(&self) -> usize {
         self.config.ec2.max_running_instances
     }
 

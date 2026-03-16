@@ -48,6 +48,7 @@ impl JobContext {
 }
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     channel: DualChannel,
+    #[cfg(not(feature = "aws"))]
     workers: Vec<(Child, Identifier, JobContext)>,
     storage: Rc<DispatcherStorage>,
     _phantom_data: std::marker::PhantomData<T>,
@@ -70,6 +71,7 @@ where
 
         let mut ok = Self {
             channel,
+            #[cfg(not(feature = "aws"))]
             workers: Vec::new(),
             storage: dispatcher_storage.clone(),
             _phantom_data: std::marker::PhantomData,
@@ -144,15 +146,10 @@ where
                 if self.storage.contains_job(&job.job_id())? {
                     warn!("Job with id {} already exists, skipping", job.job_id());
                 } else {
-                    #[cfg(feature = "aws")]
-                    {
-                        self.aws.spawn_aws_job(&job, msg)?;
-                    }
+                    self.storage.persist_job(&job.job_id(), &msg.to_string())?;
                     #[cfg(not(feature = "aws"))]
                     {
                         let (child, context) = spawn_local_job(&job)?;
-                        self.storage
-                            .persist_job(&context.job_id, &msg.to_string())?;
                         self.workers.push((child, msg.id.clone(), context));
                     }
                 }

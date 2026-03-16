@@ -7,7 +7,7 @@ use crate::dispatcher_error::DispatcherError;
 
 /// Persists and restores jobs from Storage.
 pub struct DispatcherStorage {
-    storage: Rc<Storage>,
+    pub(crate) storage: Rc<Storage>,
 }
 
 pub fn job_key(job_id: &str) -> String {

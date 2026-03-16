@@ -22,8 +22,8 @@ bitvmx-aws-helper = { path = "../aws-helper", optional = true }
 
 [dev-dependencies]
 config = "0.15.11"
-
+test-helper = { path = "../test-helper" }
 
 [features]
-default = []
+default = ["aws"]
 aws = ["bitvmx-aws-helper"]
