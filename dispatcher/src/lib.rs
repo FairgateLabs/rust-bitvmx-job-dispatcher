@@ -345,8 +345,10 @@ where
     Ok((child, job_context))
 }
 
-#[cfg(not(feature = "aws"))]
-fn extract_structured_json(expected_type: &str, result: &str) -> Result<String, DispatcherError> {
+pub fn extract_structured_json(
+    expected_type: &str,
+    result: &str,
+) -> Result<String, DispatcherError> {
     let parsed: serde_json::Value = serde_json::from_str(result)?;
     if parsed.get("type") == Some(&serde_json::Value::String(expected_type.to_string())) {
         Ok(result.to_string())

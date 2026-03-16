@@ -10,6 +10,7 @@ use tracing::info;
 use crate::{
     decode_msg, dispatcher_error::DispatcherError, dispatcher_job::DispatcherJob,
     dispatcher_message::DispatcherMessage, dispatcher_storage::DispatcherStorage,
+    extract_structured_json,
 };
 
 pub struct DispatcherAws {
@@ -103,6 +104,16 @@ impl DispatcherAws {
                 let command = job.job_type().command()?;
                 let mut full_command = vec![command.0.clone()];
                 full_command.extend(command.1.clone());
+
+                // Upload result to s3 after execution
+                full_command.push(format!(
+                    "aws s3 cp s3://{}/{}/{} {}",
+                    self.handler.bucket_name(),
+                    instance.job_id,
+                    command.2,
+                    command.2
+                ));
+
                 let command_id = self
                     .handler
                     .send_command(&instance.instance_id, full_command)?;
@@ -146,14 +157,27 @@ impl DispatcherAws {
                         instance.job_id, instance.instance_id
                     );
 
-                    let (_job, id) = self.get_job::<T>(&instance.job_id)?;
-                    //TODO: get results
+                    let (job, id) = self.get_job::<T>(&instance.job_id)?;
+
+                    let job_type = job.job_type();
+
+                    let result_file = format!("{}/{}", instance.job_id, command_id);
+
+                    let raw_result = self.handler.download_file(&format!(
+                        "{}/{}",
+                        instance.job_id,
+                        job_type.command().unwrap().2
+                    ))?;
+
+                    let str_result = String::from_utf8(raw_result)?;
+                    let result = extract_structured_json(&job_type.message_type(), &str_result)?;
 
                     self.storage
                         .storage
-                        .complete_job(&instance.job_id, ("completed".to_string(), id))?;
+                        .complete_job(&instance.job_id, (result, id))?;
 
                     self.handler.terminate_instance(&instance.instance_id)?;
+                    self.handler.delete_file(&result_file)?;
 
                     self.storage.remove_instance(&instance.instance_id)?;
                 }
