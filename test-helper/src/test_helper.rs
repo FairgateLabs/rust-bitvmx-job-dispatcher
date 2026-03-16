@@ -54,8 +54,8 @@ fn config_trace_aux() {
 pub fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
     let privk = fs::read_to_string("test-helper/cert/services.key").unwrap();
     let cert = Cert::new_with_privk(&privk).unwrap();
-    let allow_list =
-        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]).unwrap();
+    let allow_list = AllowList::new();
+    allow_list.lock().unwrap().allow_all();
 
     let routing = RoutingTable::new();
     routing.lock().unwrap().allow_all();
@@ -75,15 +75,16 @@ pub fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
 pub fn config_broker(
     rt: Option<Arc<Mutex<Runtime>>>,
     storage_path: &str,
+    paths: &Paths,
 ) -> (DualChannel, Duration, Rc<Storage>) {
     let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
     let my_id = 1;
 
-    let privk = fs::read_to_string("test-helper/cert/services.key").unwrap();
+    let privk = fs::read_to_string(&paths.job_dispatcher_key).unwrap();
     let cert = Cert::new_with_privk(&privk).unwrap();
 
-    let allow_list =
-        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)]).unwrap();
+    let allow_list = AllowList::new();
+    allow_list.lock().unwrap().allow_all();
 
     let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap());
 
@@ -105,18 +106,30 @@ pub fn config_broker(
 // Paths Configuration
 // ======================================================
 
+#[derive(Clone)]
 pub struct Paths {
     pub privk: String,
+    pub job_dispatcher_key: String,
     pub yaml_path: String,
     pub checkpoint_prover_base: String,
     pub checkpoint_verifier_base: String,
     pub commands_file: String,
 }
 
+pub enum JobType {
+    Emulator,
+    Risczero,
+}
+
 impl Paths {
-    pub fn new(path_corrector: &str) -> Self {
+    pub fn new(path_corrector: &str, job_type: JobType) -> Self {
+        let my_privk = match job_type {
+            JobType::Emulator => format!("{}test-helper/cert/emulator.key", path_corrector),
+            JobType::Risczero => format!("{}test-helper/cert/prover.key", path_corrector),
+        };
         Self {
-            privk: format!("{}test-helper/cert/services.key", path_corrector),
+            privk: format!("{}test-helper/cert/emulator.key", path_corrector),
+            job_dispatcher_key: my_privk,
             yaml_path: format!(
                 "{}../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml",
                 path_corrector
@@ -143,13 +156,8 @@ pub fn configure_example_broker(
 
     let cert = Cert::new_with_privk(&privk)?;
 
-    let allow_list =
-        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
-
-    let emulator_id = Identifier {
-        pubkey_hash: cert.get_pubk_hash()?,
-        id: dest_id,
-    };
+    let allow_list = AllowList::new();
+    allow_list.lock().unwrap().allow_all();
 
     let channel = DualChannel::new(
         &BrokerConfig::new(
@@ -162,7 +170,14 @@ pub fn configure_example_broker(
         allow_list,
     )?;
 
-    Ok((channel, emulator_id))
+    let privk = fs::read_to_string(paths.job_dispatcher_key.clone())?;
+    let cert = Cert::new_with_privk(&privk)?;
+    let job_dispatcher_id = Identifier {
+        pubkey_hash: cert.get_pubk_hash()?,
+        id: dest_id,
+    };
+
+    Ok((channel, job_dispatcher_id))
 }
 
 pub fn wait_for_result<T, F>(
@@ -201,9 +216,10 @@ pub fn run_flow<S, C, CR>(
     storage_path: String,
     start_worker: S,
     start_challenge: C,
+    paths: Paths,
 ) -> Result<(), anyhow::Error>
 where
-    S: Fn(Arc<AtomicBool>, String) -> Result<JoinHandle<Result<(), String>>, anyhow::Error>,
+    S: Fn(Arc<AtomicBool>, String, Paths) -> Result<JoinHandle<Result<(), String>>, anyhow::Error>,
     C: Fn(u16) -> std::thread::JoinHandle<CR>,
 {
     std::env::set_current_dir("..").unwrap();
@@ -212,7 +228,7 @@ where
     let mut server_handler = init_server(PORT)?;
     let running = Arc::new(AtomicBool::new(true));
 
-    let worker_handler = start_worker(running.clone(), storage_path.clone())?;
+    let worker_handler = start_worker(running.clone(), storage_path.clone(), paths.clone())?;
     let challenge_handler = start_challenge(PORT);
 
     std::thread::sleep(Duration::from_secs(12));
@@ -231,7 +247,7 @@ where
 
     info!("🔄 Restarting worker...");
     let running = Arc::new(AtomicBool::new(true));
-    let worker_handler = start_worker(running.clone(), storage_path.clone())?;
+    let worker_handler = start_worker(running.clone(), storage_path.clone(), paths.clone())?;
     info!("✅ Worker restarted");
 
     challenge_handler.join().unwrap();
@@ -256,18 +272,20 @@ pub fn run_ping_flow<S, P>(
     storage_path: String,
     start_worker: S,
     start_ping: P,
+    paths: Paths,
 ) -> Result<(), anyhow::Error>
 where
     S: Fn(
         Arc<AtomicBool>,
         String,
+        Paths,
     ) -> Result<std::thread::JoinHandle<Result<(), String>>, anyhow::Error>,
     P: Fn(u16) -> std::thread::JoinHandle<Result<(), anyhow::Error>>,
 {
     let mut server_handler = init_server(PORT)?;
     let running = Arc::new(AtomicBool::new(true));
 
-    let worker_handler = start_worker(running.clone(), storage_path.clone())?;
+    let worker_handler = start_worker(running.clone(), storage_path.clone(), paths.clone())?;
     let ping_handler = start_ping(PORT);
 
     ping_handler.join().unwrap()?;

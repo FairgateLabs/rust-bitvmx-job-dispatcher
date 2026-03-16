@@ -3,6 +3,7 @@ use anyhow::Result;
 use bitvmx_job_dispatcher::helper::get_storage_path;
 use std::thread;
 use test_helper::test_helper::{init_trace, run_ping_flow, Paths};
+use tracing::error;
 #[path = "../examples/ping.rs"]
 mod ping;
 
@@ -14,19 +15,24 @@ fn test_dispatcher_ping() -> Result<(), anyhow::Error> {
     init_trace();
 
     let storage_path = get_storage_path();
+    let path = Paths::new("", test_helper::test_helper::JobType::Emulator);
 
     run_ping_flow(
         storage_path,
-        |running, storage| start_emulator(running, storage),
+        |running, storage, paths| start_emulator(running, storage, paths),
         |port| start_ping(port),
+        path,
     )
 }
 
 fn start_ping(port: u16) -> thread::JoinHandle<Result<(), anyhow::Error>> {
-    let path = Paths::new("");
+    let path = Paths::new("", test_helper::test_helper::JobType::Emulator);
 
     thread::spawn(move || {
-        ping::emulator::run_job(path, port)?;
+        let result = ping::emulator::run_job(path, port);
+        if let Err(err) = result {
+            error!("Error in ping job: {err}");
+        }
         Ok(())
     })
 }

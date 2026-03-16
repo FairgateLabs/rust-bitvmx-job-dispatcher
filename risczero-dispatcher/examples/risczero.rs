@@ -17,16 +17,8 @@ mod prover {
     // 4. Then trigger one execution
     //      cargo run --release --example risczero
     pub(crate) fn run_proof() -> Result<(), anyhow::Error> {
-        let paths = Paths::new("");
-        let (channel, _) = configure_example_broker(&paths, 10000)?;
-
-        let privk = fs::read_to_string("../rust-bitvmx-client/config/keys/prover.key")?;
-        let dest_id = 1;
-        let cert = Cert::new_with_privk(&privk)?;
-        let dest_id = Identifier {
-            pubkey_hash: cert.get_pubk_hash()?,
-            id: dest_id,
-        };
+        let paths = Paths::new("", test_helper::test_helper::JobType::Risczero);
+        let (channel, dest_id) = configure_example_broker(&paths, 10000)?;
 
         let msg = serde_json::to_string(&DispatcherJob {
             job_id: "uid_job".to_string(),
