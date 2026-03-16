@@ -53,7 +53,7 @@ struct Command {
     storage_path: String,
 
     // Path to dispatcher config file (only used for aws dispatcher)
-    #[arg(long, default_value = "./asw-helper/config/config.yaml")]
+    #[arg(long, default_value = "./aws-helper/config/config.yaml")]
     config_path: Option<String>,
 }
 
