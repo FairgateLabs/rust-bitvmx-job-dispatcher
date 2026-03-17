@@ -109,15 +109,14 @@ impl DispatcherAws {
                 let mut full_command = vec![];
                 full_command.push(format!("cd {}", self.handler.running_path()));
 
-                for (data, fname) in job.job_type().prepare_remote_input()? {
-                    let remote_key = format!("{}/{}", instance.job_id, fname);
+                for (data, key, fname) in job.job_type().prepare_remote_input()? {
+                    let remote_key = format!("{}/{}", instance.job_id, key);
 
                     self.handler.upload_file(&remote_key, data)?;
 
                     full_command.push(format!(
-                        "aws s3 cp s3://{}/{}/{} {}",
+                        "aws s3 cp s3://{}/{} {}",
                         self.handler.bucket_name(),
-                        instance.job_id,
                         remote_key,
                         fname
                     ));
@@ -209,8 +208,8 @@ impl DispatcherAws {
                         self.handler.terminate_instance(&instance.instance_id)?;
                         self.handler.delete_file(&result_file)?;
 
-                        for (_data, fname) in job.job_type().prepare_remote_input()? {
-                            let remote_key = format!("{}/{}", instance.job_id, fname);
+                        for (_data, keyname, _fname) in job.job_type().prepare_remote_input()? {
+                            let remote_key = format!("{}/{}", instance.job_id, keyname);
                             self.handler.delete_file(&remote_key)?;
                         }
 
@@ -366,9 +365,13 @@ mod tests {
     }
 
     impl DispatcherMessage for EchoMessage {
-        fn prepare_remote_input(&self) -> Result<Vec<(Vec<u8>, String)>, DispatcherError> {
+        fn prepare_remote_input(&self) -> Result<Vec<(Vec<u8>, String, String)>, DispatcherError> {
             let data = "something to upload";
-            Ok(vec![(data.as_bytes().to_vec(), "input.txt".to_string())])
+            Ok(vec![(
+                data.as_bytes().to_vec(),
+                "input.txt".to_string(),
+                "input.txt".to_string(),
+            )])
         }
 
         fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {

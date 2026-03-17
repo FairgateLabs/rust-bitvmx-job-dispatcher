@@ -15,11 +15,15 @@ impl DispatcherMessage for ProverJobType {
         Ok(())
     }
 
-    fn prepare_remote_input(&self) -> Result<Vec<(Vec<u8>, String)>, DispatcherError> {
+    fn prepare_remote_input(&self) -> Result<Vec<(Vec<u8>, String, String)>, DispatcherError> {
         match self {
             ProverJobType::Prove(input_value, _, output_file_path) => {
                 let input_file = format!("{output_file_path}/input.bin");
-                Ok(vec![(input_value.clone(), input_file)])
+                Ok(vec![(
+                    input_value.clone(),
+                    "input.bin".to_string(),
+                    input_file,
+                )])
             }
         }
     }
