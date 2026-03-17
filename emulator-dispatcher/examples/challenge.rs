@@ -8,8 +8,9 @@ use tracing::error;
 // 3. Then run the job-dispatcher
 //      cargo run --release --bin bitvmx-emulator-dispatcher -- --port 10000 --my-id 1
 // 4. Then trigger one execution
-//      cargo run --release --example challenge --features "emulator"
+//      cargo run --release --example challenge
 pub mod emulator {
+
     use bitvmx_broker::channel::channel::DualChannel;
     use bitvmx_cpu_definitions::challenge::{EmulatorResultType, ProverFinalTraceType};
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
@@ -47,7 +48,7 @@ pub mod emulator {
                 fail_config_prover.clone(),
             ),
         })?;
-        channel.send(&emulator_id.clone(), msg)?;
+        channel.send(&emulator_id, msg)?;
 
         info!("Starting emulator job...");
         let (prover_result, job_id) =
@@ -74,7 +75,7 @@ pub mod emulator {
                 fail_config_verifier.clone(),
             ),
         })?;
-        channel.send(&emulator_id.clone(), msg)?;
+        channel.send(&emulator_id, msg)?;
 
         let (verifier_result, job_id) =
             wait_for_typed_result(&channel, "VerifierCheckExecutionResult", 20, 1)?;
@@ -97,7 +98,7 @@ pub mod emulator {
                     emulator::decision::nary_search::NArySearchType::ConflictStep,
                 ),
             })?;
-            channel.send(&emulator_id.clone(), msg)?;
+            channel.send(&emulator_id, msg)?;
 
             let (prover_hashes_result, job_id) =
                 wait_for_typed_result(&channel, "ProverGetHashesForRoundResult", 20, 1)?;
@@ -118,7 +119,7 @@ pub mod emulator {
                     emulator::decision::nary_search::NArySearchType::ConflictStep,
                 ),
             })?;
-            channel.send(&emulator_id.clone(), msg)?;
+            channel.send(&emulator_id, msg)?;
 
             let (verifier_choose_segment_result, job_id) =
                 wait_for_typed_result(&channel, "VerifierChooseSegmentResult", 20, 1)?;
@@ -141,7 +142,7 @@ pub mod emulator {
                 fail_config_prover.clone(),
             ),
         })?;
-        channel.send(&emulator_id.clone(), msg)?;
+        channel.send(&emulator_id, msg)?;
 
         let (final_trace, job_id) =
             wait_for_typed_result(&channel, "ProverFinalTraceResult", 20, 1)?;
@@ -230,7 +231,7 @@ pub mod emulator {
 #[allow(dead_code)]
 fn main() {
     init_trace();
-    let paths = Paths::new("");
+    let paths = Paths::new("", test_helper::test_helper::JobType::Emulator);
     if let Err(e) = emulator::run_job(paths, 10000) {
         error!("Error: {}", e);
     }

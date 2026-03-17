@@ -27,11 +27,16 @@ where
 pub struct ResultMessage {
     pub job_id: String,
     pub result: String,
+    pub is_error: bool,
 }
 
 impl ResultMessage {
-    pub fn new(job_id: String, result: String) -> Self {
-        Self { job_id, result }
+    pub fn new(job_id: String, result: String, is_error: bool) -> Self {
+        Self {
+            job_id,
+            result,
+            is_error,
+        }
     }
     pub fn to_string(&self) -> Result<String, DispatcherError> {
         Ok(serde_json::to_string(self)?)

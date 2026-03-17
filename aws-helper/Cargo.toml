@@ -1,0 +1,25 @@
+[package]
+name = "bitvmx-aws-helper"
+version = "0.5.0"
+edition = "2024"
+
+[dependencies]
+aws-config = "1.1"
+aws-sdk-ec2 = "1.13"
+aws-sdk-ssm = "1.13"
+aws-sdk-s3 = "1.13"
+tokio = { version = "1", features = ["full"] }
+clap = { version = "4.5", features = ["derive"] }
+serde_yaml = "0.9.19"
+serde_json = "1.0.95"
+serde = { version = "1.0.219", features = ["derive"] }
+ctrlc = "3.2.0"
+tracing = "0.1.26"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0.95"
+thiserror = "2.0.11"
+bitvmx-settings = { git = "https://github.com/FairgateLabs/rust-bitvmx-settings.git", tag = "v0.5.1" }
+
+[dev-dependencies]
+rand = "0.9.1"
+test-helper = { path = "../test-helper" }

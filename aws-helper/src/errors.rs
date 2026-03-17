@@ -1,3 +1,4 @@
+use aws_sdk_s3::primitives::ByteStreamError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -23,6 +24,9 @@ pub enum AwsDispatcherError {
     #[error("S3 error {0}")]
     S3Error(#[from] aws_sdk_s3::Error),
 
+    #[error("Byte stream error {0}")]
+    ByteStreamError(#[from] ByteStreamError),
+
     #[error("Command execution failed")]
     CommandExecutionFailed,
 
@@ -32,17 +36,8 @@ pub enum AwsDispatcherError {
     #[error("Invalid {0} Status")]
     InvalidStatus(String),
 
-    #[error("Utils error {0}")]
-    UtilsError(#[from] bitvmx_dispatcher_utils::error::UtilsError),
-
-    #[error("Broker error {0}")]
-    BrokerError(#[from] bitvmx_broker::rpc::errors::BrokerError),
-
     #[error("Mutex Poisoned: {0}")]
     MutexPoisoned(String),
-
-    #[error("Storage error {0}")]
-    StorageError(#[from] storage_backend::error::StorageError),
 
     #[error("No instance IDs were given")]
     NoInstanceIds,
@@ -73,7 +68,4 @@ pub enum AwsDispatcherError {
 
     #[error("Instance timeout")]
     InstanceTimeout,
-
-    #[error("Dispatcher error {0}")]
-    DispatcherError(#[from] bitvmx_job_dispatcher::dispatcher_error::DispatcherError),
 }

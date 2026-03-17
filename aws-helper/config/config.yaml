@@ -4,7 +4,7 @@ aws:
   secret_access_key: (env:AWS_SECRET_ACCESS_KEY)
 
 ec2:
-  image_id: "ami-0c4d37e988d482206"
+  image_id: "ami-0a260d1172ddb23d1"
   instance_profile_arn: "arn:aws:iam::280362093965:instance-profile/ZKP"
   max_running_instances: 3
   instance_type: "t3.xlarge"

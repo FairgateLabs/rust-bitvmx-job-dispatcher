@@ -7,7 +7,7 @@ edition = "2024"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.5.1" }
-bitvmx-job-dispatcher = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", tag = "v0.5.1" }
+bitvmx-job-dispatcher = { path = "../dispatcher" }
 rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.5.1" }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.95"

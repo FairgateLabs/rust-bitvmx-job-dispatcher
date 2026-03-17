@@ -1,6 +1,7 @@
-use crate::dispatcher_error::AwsDispatcherError;
 use serde::Deserialize;
 use tracing::info;
+
+use crate::errors::AwsDispatcherError;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AppConfig {

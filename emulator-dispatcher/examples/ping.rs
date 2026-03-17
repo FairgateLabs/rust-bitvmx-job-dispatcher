@@ -54,7 +54,7 @@ pub mod emulator {
 #[allow(dead_code)]
 fn main() {
     init_trace();
-    let paths = Paths::new("");
+    let paths = Paths::new("", test_helper::test_helper::JobType::Emulator);
     if let Err(e) = emulator::run_job(paths, 10000) {
         error!("Error: {}", e);
     }

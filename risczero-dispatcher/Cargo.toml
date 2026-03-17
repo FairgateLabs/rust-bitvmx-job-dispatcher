@@ -14,12 +14,14 @@ thiserror = "2.0.11"
 bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.5.1" }
 zk-result = { git = "https://github.com/FairgateLabs/rust-bitvmx-zk-proof.git", tag = "v0.5.1" }
 hex = "0.4"
-bitvmx-job-dispatcher-types = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", features = [
-    "prover",
-], tag = "v0.5.1" }
-bitvmx-job-dispatcher = { git = "https://github.com/FairgateLabs/rust-bitvmx-job-dispatcher.git", tag = "v0.5.1" }
+bitvmx-job-dispatcher-types = { path = "../jobtypes", features = ["prover"] }
+bitvmx-job-dispatcher = { path = "../dispatcher" }
 clap = { version = "4.5.32", features = ["derive"] }
 
 [dev-dependencies]
 config = "0.15.11"
 test-helper = { path = "../test-helper" }
+
+[features]
+default = []
+aws = ["bitvmx-job-dispatcher/aws"]
