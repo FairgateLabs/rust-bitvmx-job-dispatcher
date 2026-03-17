@@ -28,10 +28,10 @@ mod prover {
         })?;
         channel.send(&dest_id, msg)?;
 
-        let result = wait_for_result(&channel, 1000, 1, |msg| {
+        let result = wait_for_result(&channel, 1000, 2, |msg| {
             let parsed = ResultMessage::from_str(msg)?;
             println!(
-                "Received message for jobid: {} restul: {}",
+                "Received message for jobid: {} result is err: {}",
                 parsed.job_id, parsed.is_error
             );
 
