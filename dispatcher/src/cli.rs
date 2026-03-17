@@ -55,6 +55,10 @@ struct Command {
     // Path to dispatcher config file (only used for aws dispatcher)
     #[arg(long, default_value = "./aws-helper/config/config.yaml")]
     config_path: Option<String>,
+
+    // Specify the mode to run the dispatcher, either "local" or "aws"
+    #[arg(long, default_value = "local")]
+    mode: String,
 }
 
 fn init_trace() -> Result<(), DispatcherError> {
@@ -77,6 +81,7 @@ pub fn init() -> Result<
         Arc<AtomicBool>,
         Rc<Storage>,
         Option<String>,
+        bool,
     ),
     DispatcherError,
 > {
@@ -114,5 +119,12 @@ pub fn init() -> Result<
 
     let storage = get_storage_with_path(&args.storage_path)?;
 
-    Ok((channel, check_interval, running, storage, args.config_path))
+    Ok((
+        channel,
+        check_interval,
+        running,
+        storage,
+        args.config_path,
+        args.mode == "local",
+    ))
 }

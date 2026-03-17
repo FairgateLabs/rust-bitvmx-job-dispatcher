@@ -52,7 +52,8 @@ pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
     storage: Rc<DispatcherStorage>,
     _phantom_data: std::marker::PhantomData<T>,
     #[cfg(feature = "aws")]
-    aws: crate::dispatcher_aws::DispatcherAws,
+    aws: Option<crate::dispatcher_aws::DispatcherAws>,
+    local_mode: bool,
 }
 
 impl<T> DispatcherHandler<T>
@@ -63,30 +64,44 @@ where
         channel: DualChannel,
         storage: Rc<Storage>,
         config: Option<String>,
+        #[cfg(feature = "aws")] local_mode: bool,
+        #[cfg(not(feature = "aws"))] mut local_mode: bool,
     ) -> Result<Self, DispatcherError> {
         let dispatcher_storage = Rc::new(DispatcherStorage::new(storage.clone()));
 
         debug!("Initializing dispatcher handler with config: {:?}", config);
 
-        let ret = Self {
+        #[cfg(not(feature = "aws"))]
+        if !local_mode {
+            warn!("AWS feature is not enabled, but local_mode is set to false. Defaulting to local mode.");
+            local_mode = true;
+        }
+
+        #[cfg(feature = "aws")]
+        let aws_dispatcher = if !local_mode {
+            Some(crate::dispatcher_aws::DispatcherAws::new(
+                config.unwrap_or_default(),
+                dispatcher_storage.clone(),
+            )?)
+        } else {
+            warn!("AWS feature is enabled, but local_mode is set to true. AWS dispatcher will not be initialized.");
+            None
+        };
+
+        let mut ret = Self {
             channel,
             workers: Vec::new(),
             storage: dispatcher_storage.clone(),
             _phantom_data: std::marker::PhantomData,
             #[cfg(feature = "aws")]
-            aws: crate::dispatcher_aws::DispatcherAws::new(
-                config.unwrap_or_default(),
-                dispatcher_storage.clone(),
-            )?,
+            aws: aws_dispatcher,
+            local_mode,
         };
 
-        #[cfg(not(feature = "aws"))]
-        {
-            let mut ret = ret;
+        if local_mode {
             ret.restore_jobs()?;
-            Ok(ret)
         }
-        #[cfg(feature = "aws")]
+
         Ok(ret)
     }
 
@@ -94,13 +109,13 @@ where
         channel: DualChannel,
         storage_path: &str,
         config: Option<String>,
+        local_mode: bool,
     ) -> Result<Self, DispatcherError> {
         let storage_config = StorageConfig::new(storage_path.to_string(), None);
         let storage = Rc::new(Storage::new(&storage_config)?);
-        Self::new(channel, storage, config)
+        Self::new(channel, storage, config, local_mode)
     }
 
-    #[allow(dead_code)]
     fn restore_jobs(&mut self) -> Result<(), DispatcherError> {
         let keys = self.storage.list_jobs()?;
 
@@ -147,8 +162,7 @@ where
                     warn!("Job with id {} already exists, skipping", job.job_id());
                 } else {
                     self.storage.persist_job(&job.job_id(), &msg.to_string())?;
-                    #[cfg(not(feature = "aws"))]
-                    {
+                    if self.local_mode {
                         let (child, context) = spawn_local_job(&job)?;
                         self.workers.push((child, msg.id.clone(), context));
                     }
@@ -158,7 +172,6 @@ where
         Ok(())
     }
 
-    #[allow(dead_code)]
     fn process_running_jobs(&mut self) -> Result<bool, DispatcherError> {
         let mut job_completed = false;
 
@@ -287,8 +300,13 @@ where
 
     pub fn tick(&mut self) -> Result<bool, DispatcherError> {
         self.create_new_jobs()?;
+
         #[cfg(feature = "aws")]
-        let job_completed = self.aws.tick::<T>()?;
+        let job_completed = if !self.local_mode {
+            self.aws.as_ref().unwrap().tick::<T>()?
+        } else {
+            self.process_running_jobs()?
+        };
         #[cfg(not(feature = "aws"))]
         let job_completed = self.process_running_jobs()?;
 
@@ -303,9 +321,10 @@ pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned + std::fmt::Debug
     running: Arc<AtomicBool>,
     storage: Rc<Storage>,
     config: Option<String>,
+    local_mode: bool,
 ) -> Result<(), DispatcherError> {
     let mut dispacher_handler: DispatcherHandler<T> =
-        DispatcherHandler::<T>::new(channel, storage, config)?;
+        DispatcherHandler::<T>::new(channel, storage, config, local_mode)?;
 
     while running.load(Ordering::SeqCst) {
         dispacher_handler.tick()?;
@@ -329,7 +348,6 @@ where
     Ok(msg)
 }
 
-#[allow(dead_code)]
 fn spawn_local_job<V>(msg: &DispatcherJob<V>) -> Result<(Child, JobContext), DispatcherError>
 where
     V: DispatcherMessage + DeserializeOwned,

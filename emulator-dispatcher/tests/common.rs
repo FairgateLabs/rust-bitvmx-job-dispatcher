@@ -16,9 +16,14 @@ pub fn start_emulator(
     let handle = thread::spawn(move || {
         let (channel, check_interval, storage) = config_broker(None, &storage_path, &paths);
 
-        if let Err(e) =
-            dispatcher_loop::<EmulatorJobType>(channel, check_interval, running, storage, None)
-        {
+        if let Err(e) = dispatcher_loop::<EmulatorJobType>(
+            channel,
+            check_interval,
+            running,
+            storage,
+            None,
+            true,
+        ) {
             tracing::error!("Error in dispatcher loop: {e}");
             return Err(format!("dispatcher error: {e}"));
         }
