@@ -1,5 +1,6 @@
 use storage_backend::error::StorageError;
 use thiserror::Error;
+use tracing_subscriber::util::TryInitError;
 
 #[derive(Error, Debug)]
 pub enum DispatcherError {
@@ -30,6 +31,22 @@ pub enum DispatcherError {
     #[error("Parse error")]
     ParseError,
 
-    #[error("Broker error")]
+    #[error("Broker error {0}")]
     BrokerError(#[from] bitvmx_broker::rpc::errors::BrokerError),
+
+    #[error("Utils error {0}")]
+    UtilsError(#[from] bitvmx_dispatcher_utils::error::UtilsError),
+
+    #[error("Checkpoint path error: {0}")]
+    CheckpointPathError(String),
+
+    #[error("Tracing error {0}")]
+    TracingError(#[from] TryInitError),
+
+    #[cfg(feature = "aws")]
+    #[error("Aws Dispatcher error {0}")]
+    AwsDispatcherError(#[from] bitvmx_aws_helper::errors::AwsDispatcherError),
+
+    #[error("String conversion error {0}")]
+    StringConversionError(#[from] std::string::FromUtf8Error),
 }

@@ -1,3 +1,8 @@
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
+
 use bitvmx_cpu_definitions::{
     //challenge::{ChallengeType, EmulatorResultType},
     trace::TraceRWStep,
@@ -20,8 +25,52 @@ const EMULATOR_PATH: &str = "../BitVMX-CPU/target/release/emulator.exe";
 #[cfg(not(target_os = "windows"))]
 const EMULATOR_PATH: &str = "../BitVMX-CPU/target/release/emulator";
 
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
+    fs::create_dir_all(&dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        } else {
+            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
+fn prepare_current(base: &Path) -> io::Result<PathBuf> {
+    let prev = base.join("prev");
+    let current = base.join("current");
+
+    if current.exists() {
+        fs::remove_dir_all(&current)?;
+    }
+
+    if prev.exists() {
+        copy_dir_all(&prev, &current)?;
+    } else {
+        fs::create_dir_all(&current)?;
+    }
+
+    Ok(current)
+}
+
+pub fn commit_checkpoint(base: &Path) -> io::Result<()> {
+    let prev = base.join("prev");
+    let current = base.join("current");
+
+    if prev.exists() {
+        fs::remove_dir_all(&prev)?;
+    }
+
+    fs::rename(current, prev)?;
+    Ok(())
+}
+
 impl DispatcherMessage for EmulatorJobType {
     fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
+        let checkpoint_path = self.prepare_checkpoint()?;
         match self {
             EmulatorJobType::Execute(elf, command_file) => {
                 let args = vec![
@@ -36,20 +85,14 @@ impl DispatcherMessage for EmulatorJobType {
                 ];
                 Ok((EMULATOR_PATH.to_string(), args, command_file.to_string()))
             }
-            EmulatorJobType::ProverExecute(
-                yaml,
-                input,
-                checkpoint_prover,
-                command_file,
-                fail_config_prover,
-            ) => {
+            EmulatorJobType::ProverExecute(yaml, input, _, command_file, fail_config_prover) => {
                 let hex_input = hex::encode(input);
                 let mut args = vec![
                     "prover-execute".to_string(),
                     "--pdf".to_string(),
                     yaml.clone(),
                     "--checkpoint-prover-path".to_string(),
-                    checkpoint_prover.clone(),
+                    checkpoint_path.clone(),
                     "--force".to_string(),
                     "--command-file".to_string(),
                     command_file.clone(),
@@ -67,7 +110,7 @@ impl DispatcherMessage for EmulatorJobType {
             EmulatorJobType::VerifierCheckExecution(
                 yaml,
                 input,
-                checkpoint_verifier,
+                _,
                 claim_last_step,
                 claim_last_hash,
                 command_file,
@@ -80,7 +123,7 @@ impl DispatcherMessage for EmulatorJobType {
                     "--pdf".to_string(),
                     yaml.clone(),
                     "--checkpoint-verifier-path".to_string(),
-                    checkpoint_verifier.clone(),
+                    checkpoint_path.clone(),
                     "--claim-last-step".to_string(),
                     claim_last_step.to_string(),
                     "--claim-last-hash".to_string(),
@@ -103,7 +146,7 @@ impl DispatcherMessage for EmulatorJobType {
             }
             EmulatorJobType::ProverGetHashesForRound(
                 pdf,
-                checkpoint_prover,
+                _,
                 round_number,
                 v_decision,
                 command_file,
@@ -115,7 +158,7 @@ impl DispatcherMessage for EmulatorJobType {
                     "--pdf".to_string(),
                     pdf.clone(),
                     "--checkpoint-prover-path".to_string(),
-                    checkpoint_prover.clone(),
+                    checkpoint_path.clone(),
                     "--round-number".to_string(),
                     round_number.to_string(),
                     "--v-decision".to_string(),
@@ -135,7 +178,7 @@ impl DispatcherMessage for EmulatorJobType {
             }
             EmulatorJobType::VerifierChooseSegment(
                 pdf,
-                checkpoint_verifier,
+                _,
                 round_number,
                 hashes,
                 command_file,
@@ -147,7 +190,7 @@ impl DispatcherMessage for EmulatorJobType {
                     "--pdf".to_string(),
                     pdf.clone(),
                     "--checkpoint-verifier-path".to_string(),
-                    checkpoint_verifier.clone(),
+                    checkpoint_path.clone(),
                     "--round-number".to_string(),
                     round_number.to_string(),
                     "--command-file".to_string(),
@@ -171,7 +214,7 @@ impl DispatcherMessage for EmulatorJobType {
             }
             EmulatorJobType::ProverFinalTrace(
                 pdf,
-                checkpoint_prover,
+                _,
                 v_decision,
                 command_file,
                 fail_config_prover,
@@ -181,7 +224,7 @@ impl DispatcherMessage for EmulatorJobType {
                     "--pdf".to_string(),
                     pdf.clone(),
                     "--checkpoint-prover-path".to_string(),
-                    checkpoint_prover.clone(),
+                    checkpoint_path.clone(),
                     "--v-decision".to_string(),
                     v_decision.to_string(),
                     "--command-file".to_string(),
@@ -197,7 +240,7 @@ impl DispatcherMessage for EmulatorJobType {
             }
             EmulatorJobType::VerifierChooseChallenge(
                 pdf,
-                checkpoint_verifier,
+                _,
                 prover_final_trace,
                 resigned_step_hash,
                 resigned_next_hash,
@@ -210,7 +253,7 @@ impl DispatcherMessage for EmulatorJobType {
                     "--pdf".to_string(),
                     pdf.clone(),
                     "--checkpoint-verifier-path".to_string(),
-                    checkpoint_verifier.clone(),
+                    checkpoint_path.clone(),
                     "--prover-final-trace".to_string(),
                     serde_json::to_string(&prover_final_trace)?,
                     "--resigned-step-hash".to_string(),
@@ -232,7 +275,7 @@ impl DispatcherMessage for EmulatorJobType {
             }
             EmulatorJobType::VerifierChooseChallengeForReadChallenge(
                 pdf,
-                checkpoint_verifier,
+                _,
                 command_file,
                 resigned_step_hash,
                 resigned_next_hash,
@@ -244,7 +287,7 @@ impl DispatcherMessage for EmulatorJobType {
                     "--pdf".to_string(),
                     pdf.clone(),
                     "--checkpoint-verifier-path".to_string(),
-                    checkpoint_verifier.clone(),
+                    checkpoint_path.clone(),
                     "--resigned-step-hash".to_string(),
                     resigned_step_hash.clone(),
                     "--resigned-next-hash".to_string(),
@@ -264,7 +307,7 @@ impl DispatcherMessage for EmulatorJobType {
             }
             EmulatorJobType::ProverGetHashesAndStep(
                 pdf,
-                checkpoint_prover,
+                _,
                 v_decision,
                 command_file,
                 fail_config_prover,
@@ -274,7 +317,7 @@ impl DispatcherMessage for EmulatorJobType {
                     "--pdf".to_string(),
                     pdf.clone(),
                     "--checkpoint-prover-path".to_string(),
-                    checkpoint_prover.clone(),
+                    checkpoint_path.clone(),
                     "--v-decision".to_string(),
                     v_decision.to_string(),
                     "--command-file".to_string(),
@@ -316,6 +359,10 @@ impl DispatcherMessage for EmulatorJobType {
             }
         };
         msg_type.to_string()
+    }
+
+    fn commit_checkpoint(&self) -> Result<(), DispatcherError> {
+        self.commit_checkpoint()
     }
 }
 
@@ -378,5 +425,37 @@ pub enum EmulatorJobType {
 impl EmulatorJobType {
     pub fn to_string(&self) -> Result<String, DispatcherError> {
         Ok(serde_json::to_string(self)?)
+    }
+    pub fn checkpoint_base(&self) -> Result<String, DispatcherError> {
+        match self {
+            EmulatorJobType::ProverExecute(_, _, base, _, _) => Ok(base.clone()),
+            EmulatorJobType::VerifierCheckExecution(_, _, base, _, _, _, _, _) => Ok(base.clone()),
+            EmulatorJobType::ProverGetHashesForRound(_, base, _, _, _, _, _) => Ok(base.clone()),
+            EmulatorJobType::VerifierChooseSegment(_, base, _, _, _, _, _) => Ok(base.clone()),
+            EmulatorJobType::ProverFinalTrace(_, base, _, _, _) => Ok(base.clone()),
+            EmulatorJobType::VerifierChooseChallenge(_, base, _, _, _, _, _, _) => Ok(base.clone()),
+            EmulatorJobType::VerifierChooseChallengeForReadChallenge(_, base, _, _, _, _, _) => {
+                Ok(base.clone())
+            }
+            EmulatorJobType::ProverGetHashesAndStep(_, base, _, _, _) => Ok(base.clone()),
+            EmulatorJobType::Execute(_, _) => Err(DispatcherError::CheckpointPathError(
+                "Execute job type does not have a checkpoint path".to_string(),
+            )),
+        }
+    }
+    pub fn prepare_checkpoint(&self) -> Result<String, DispatcherError> {
+        let base = PathBuf::from(self.checkpoint_base()?);
+        let current = prepare_current(&base)
+            .map_err(|e| DispatcherError::CheckpointPathError(e.to_string()))?;
+
+        current
+            .to_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| DispatcherError::CheckpointPathError("Invalid checkpoint path".into()))
+    }
+
+    pub fn commit_checkpoint(&self) -> Result<(), DispatcherError> {
+        let base = PathBuf::from(self.checkpoint_base()?);
+        commit_checkpoint(&base).map_err(|e| DispatcherError::CheckpointPathError(e.to_string()))
     }
 }

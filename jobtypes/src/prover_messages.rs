@@ -4,15 +4,36 @@ use bitvmx_job_dispatcher::{
 use serde::{Deserialize, Serialize};
 
 impl DispatcherMessage for ProverJobType {
-    fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
+    fn prepare_local_input(&self) -> Result<(), DispatcherError> {
         match self {
-            ProverJobType::Prove(input_value, elf, output_file_path) => {
+            ProverJobType::Prove(input_value, _, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
-                let json = format!("{output_file_path}/output.json");
-                let stark_proof = format!("{output_file_path}/stark_proof.bin");
                 let input_file = format!("{output_file_path}/input.bin");
                 std::fs::write(&input_file, input_value)?;
+            }
+        }
+        Ok(())
+    }
 
+    fn prepare_remote_input(&self) -> Result<Vec<(Vec<u8>, String, String)>, DispatcherError> {
+        match self {
+            ProverJobType::Prove(input_value, _, output_file_path) => {
+                let input_file = format!("{output_file_path}/input.bin");
+                Ok(vec![(
+                    input_value.clone(),
+                    "input.bin".to_string(),
+                    input_file,
+                )])
+            }
+        }
+    }
+
+    fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
+        match self {
+            ProverJobType::Prove(_input_value, elf, output_file_path) => {
+                let input_file = format!("{output_file_path}/input.bin");
+                let json = format!("{output_file_path}/output.json");
+                let stark_proof = format!("{output_file_path}/stark_proof.bin");
                 let cmd = "sh".to_string();
                 let args = vec![
                     "-c".to_string(),
@@ -32,7 +53,6 @@ impl DispatcherMessage for ProverJobType {
                 Ok((cmd, args, json))
             }
         }
-
     }
 
     fn message_type(&self) -> String {
