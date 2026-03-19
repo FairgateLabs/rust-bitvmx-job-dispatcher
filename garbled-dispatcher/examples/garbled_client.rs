@@ -1,22 +1,11 @@
-use std::{
-    fs,
-    net::{IpAddr, Ipv4Addr},
-    thread::sleep,
-    time::Duration,
-};
+use std::{fs, thread::sleep, time::Duration};
 
 use anyhow::Result;
-use bitvmx_broker::{
-    channel::channel::DualChannel,
-    identification::{allow_list::AllowList, identifier::Identifier},
-    rpc::{tls_helper::Cert, BrokerConfig},
-};
+use bitvmx_broker::channel::channel::DualChannel;
 use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
 use bitvmx_job_dispatcher_types::garbled_messages::GarbledJobType;
+use test_helper::test_helper::{configure_example_broker, init_trace, Paths};
 use tracing::{error, info};
-use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
-};
 
 // To make this example work, you need to:
 // 1. Build the gnova binary:
@@ -28,10 +17,8 @@ use tracing_subscriber::{
 // 4. Run this client example:
 //      cargo run --release --example garbled_client
 
-const PRIVK_PATH: &str = "test-helper/cert/services.key";
-
 fn main() {
-    init_trace().unwrap();
+    init_trace();
     if let Err(e) = run_garbled_job(10000) {
         error!("Error: {}", e);
     }
@@ -40,32 +27,8 @@ fn main() {
 fn run_garbled_job(port: u16) -> Result<()> {
     info!("Starting garbled circuit client example...");
 
-    //print current path
-    info!("Current directory: {}", std::env::current_dir()?.display());
-
-    let privk = fs::read_to_string(PRIVK_PATH)?;
-    let my_id = 2; // Client ID
-    let dispatcher_id = 1; // Dispatcher ID
-
-    let cert = Cert::new_with_privk(&privk)?;
-    let allow_list =
-        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
-
-    let dispatcher_identifier = Identifier {
-        pubkey_hash: cert.get_pubk_hash()?,
-        id: dispatcher_id,
-    };
-
-    let channel = DualChannel::new(
-        &BrokerConfig::new(
-            port,
-            Some(IpAddr::from([127, 0, 0, 1])),
-            cert.get_pubk_hash()?,
-        ),
-        cert,
-        Some(my_id),
-        allow_list,
-    )?;
+    let paths = Paths::new("", test_helper::test_helper::JobType::Risczero);
+    let (channel, dest_id) = configure_example_broker(&paths, port)?;
 
     let output_dir = "/tmp/garbled_dispatcher_test";
     let _ = fs::remove_dir_all(output_dir);
@@ -82,13 +45,13 @@ fn run_garbled_job(port: u16) -> Result<()> {
         job_id: "prove_simple_001".to_string(),
         job_type: GarbledJobType::Prove(
             input_bytes,
-            "simple".to_string(),
+            "../rust-bitvmx-gc/test-circuits/simple.circuit".to_string(),
             format!("{}/prove", output_dir),
         ),
     };
 
     let msg = serde_json::to_string(&prove_job)?;
-    channel.send(&dispatcher_identifier, msg)?;
+    channel.send(&dest_id, msg)?;
 
     info!("Waiting for Prove result...");
     let (prove_result, job_id) = wait_for_result(&channel, "ProveResult", 120, 2)?;
@@ -116,7 +79,7 @@ fn run_garbled_job(port: u16) -> Result<()> {
     };
 
     let msg = serde_json::to_string(&verify_job)?;
-    channel.send(&dispatcher_identifier, msg)?;
+    channel.send(&dest_id, msg)?;
 
     info!("Waiting for Verify result...");
     let (verify_result, job_id) = wait_for_result(&channel, "VerifyResult", 60, 2)?;
@@ -180,17 +143,4 @@ fn wait_for_result(
         expected_type,
         max_attempts
     ))
-}
-
-fn init_trace() -> Result<()> {
-    let filter = EnvFilter::builder()
-        .parse("info,tarpc=off")
-        .expect("Invalid filter");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-        .try_init()?;
-
-    Ok(())
 }

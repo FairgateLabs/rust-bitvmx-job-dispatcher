@@ -3,6 +3,22 @@ use bitvmx_job_dispatcher::{
 };
 use serde::{Deserialize, Serialize};
 
+impl GarbledJobType {
+    fn gnova_bin() -> String {
+        #[cfg(target_os = "windows")]
+        let gnova_bin = "gnova.exe";
+        #[cfg(not(target_os = "windows"))]
+        let gnova_bin = "gnova";
+        std::env::var("GNOVA_BIN").unwrap_or_else(|_| {
+            format!(
+                "{}/../../rust-bitvmx-gc/target/release/{}",
+                env!("CARGO_MANIFEST_DIR"),
+                gnova_bin
+            )
+        })
+    }
+}
+
 impl DispatcherMessage for GarbledJobType {
     fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
         match self {
@@ -12,8 +28,7 @@ impl DispatcherMessage for GarbledJobType {
                 let input_file = format!("{output_file_path}/input.bin");
                 std::fs::write(&input_file, input_value)?;
 
-                let cmd =
-                    std::env::var("GNOVA_BIN").unwrap_or_else(|_| "../../rust-bitvmx-gc/target/release/gnova".to_string());
+                let cmd = Self::gnova_bin();
                 let args = vec![
                     "prove".to_string(),
                     "--circuit".to_string(),
@@ -31,8 +46,7 @@ impl DispatcherMessage for GarbledJobType {
                 std::fs::create_dir_all(output_file_path)?;
                 let json = format!("{output_file_path}/output.json");
 
-                let cmd =
-                    std::env::var("GNOVA_BIN").unwrap_or_else(|_| "../../rust-bitvmx-gc/target/release/gnova".to_string());
+                let cmd = Self::gnova_bin();
                 let args = vec![
                     "verify".to_string(),
                     "--proof".to_string(),

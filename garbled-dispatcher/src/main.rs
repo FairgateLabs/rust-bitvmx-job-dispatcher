@@ -1,103 +1,23 @@
-use std::{
-    fs,
-    net::{IpAddr, Ipv4Addr},
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
-
-use anyhow::Result;
-use bitvmx_broker::{
-    channel::channel::DualChannel,
-    identification::allow_list::AllowList,
-    rpc::{tls_helper::Cert, BrokerConfig},
-};
-
-use bitvmx_job_dispatcher::{dispatcher_loop, get_storage_with_path};
+use bitvmx_job_dispatcher::{cli::init, dispatcher_loop};
 use bitvmx_job_dispatcher_types::garbled_messages::GarbledJobType;
-use clap::{command, Parser};
 use tracing::info;
-use tracing_subscriber::{
-    fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
-};
-
-#[derive(Parser)]
-#[command(about = "Garbled Circuits Dispatcher CLI", long_about = None)]
-#[command(arg_required_else_help = true)]
-struct Command {
-    #[arg(long, default_value = "127.0.0.1")]
-    ip: String,
-    #[arg(long)]
-    port: u16,
-
-    #[arg(long, default_value = "0")]
-    my_id: u8,
-
-    /// Path to the private key file
-    #[arg(long, default_value = "../rust-bitvmx-client/config/keys/emulator.key")]
-    my_priv_key: String,
-
-    /// PubKeyHash of the broker service
-    #[arg(
-        long,
-        default_value = "155c24337976116159e73e386bb721b8c5e219ae18696ef4fde6b7dedadfc570"
-    )]
-    broker_pubk_hash: String,
-
-    /// Path to storage database
-    #[arg(long, default_value = "temp-runs/storage_garbled_job.db")]
-    storage_path: String,
-}
-
-fn init_trace() -> Result<(), anyhow::Error> {
-    let filter = EnvFilter::builder()
-        .parse("info,tarpc=off")
-        .expect("Invalid filter");
-
-    tracing_subscriber::registry()
-        .with(filter)
-        .with(tracing_subscriber::fmt::layer().with_span_events(FmtSpan::NEW | FmtSpan::CLOSE))
-        .try_init()?;
-
-    Ok(())
-}
 
 fn main() -> Result<(), anyhow::Error> {
-    init_trace()?;
-    let args = Command::parse();
+    let (channel, check_interval, running, storage, config, local_mode) = init()?;
 
-    info!("Starting...");
+    #[cfg(feature = "aws")]
+    info!("Running in AWS mode");
+    #[cfg(not(feature = "aws"))]
+    info!("Running in local mode");
 
-    let ip = args
-        .ip
-        .parse::<Ipv4Addr>()
-        .map(|ip| ip.octets())
-        .expect("Invalid IPv4 address");
-
-    let my_id = args.my_id;
-    let privk = fs::read_to_string(&args.my_priv_key)?;
-
-    let cert = Cert::new_with_privk(&privk)?;
-
-    let allow_list = AllowList::new();
-    allow_list.lock().unwrap().allow_all();
-
-    let config: BrokerConfig =
-        BrokerConfig::new(args.port, Some(IpAddr::from(ip)), args.broker_pubk_hash);
-    let channel = DualChannel::new(&config, cert, Some(my_id), allow_list)?;
-    let check_interval = std::time::Duration::from_secs(1);
-
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })
-    .expect("Error setting Ctrl-C handler");
-
-    let storage = get_storage_with_path(&args.storage_path)?;
-    dispatcher_loop::<GarbledJobType>(channel, check_interval, running, storage, None, true)?;
+    dispatcher_loop::<GarbledJobType>(
+        channel,
+        check_interval,
+        running,
+        storage,
+        config,
+        local_mode,
+    )?;
 
     info!("Shutting down...");
 
