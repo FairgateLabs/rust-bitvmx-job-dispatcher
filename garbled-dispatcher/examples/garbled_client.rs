@@ -28,7 +28,7 @@ use tracing_subscriber::{
 // 4. Run this client example:
 //      cargo run --release --example garbled_client
 
-const PRIVK_PATH: &str = "../../rust-bitvmx-broker/certs/services.key";
+const PRIVK_PATH: &str = "test-helper/cert/services.key";
 
 fn main() {
     init_trace().unwrap();
@@ -40,12 +40,16 @@ fn main() {
 fn run_garbled_job(port: u16) -> Result<()> {
     info!("Starting garbled circuit client example...");
 
+    //print current path
+    info!("Current directory: {}", std::env::current_dir()?.display());
+
     let privk = fs::read_to_string(PRIVK_PATH)?;
     let my_id = 2; // Client ID
     let dispatcher_id = 1; // Dispatcher ID
 
     let cert = Cert::new_with_privk(&privk)?;
-    let allow_list = AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
+    let allow_list =
+        AllowList::from_certs(vec![cert.clone()], vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])?;
 
     let dispatcher_identifier = Identifier {
         pubkey_hash: cert.get_pubk_hash()?,
@@ -53,7 +57,11 @@ fn run_garbled_job(port: u16) -> Result<()> {
     };
 
     let channel = DualChannel::new(
-        &BrokerConfig::new(port, Some(IpAddr::from([127, 0, 0, 1])), cert.get_pubk_hash()?),
+        &BrokerConfig::new(
+            port,
+            Some(IpAddr::from([127, 0, 0, 1])),
+            cert.get_pubk_hash()?,
+        ),
         cert,
         Some(my_id),
         allow_list,
@@ -150,13 +158,19 @@ fn wait_for_result(
                 if json["type"] == expected_type {
                     return Ok((json, result_msg.job_id));
                 } else {
-                    info!("Received different type: {}, waiting for {}", json["type"], expected_type);
+                    info!(
+                        "Received different type: {}, waiting for {}",
+                        json["type"], expected_type
+                    );
                 }
             } else {
                 info!("Received unstructured result: {}", result_msg.result);
             }
         } else {
-            info!("Attempt {}/{}: Waiting for result...", attempt, max_attempts);
+            info!(
+                "Attempt {}/{}: Waiting for result...",
+                attempt, max_attempts
+            );
             sleep(Duration::from_secs(delay_secs));
         }
     }

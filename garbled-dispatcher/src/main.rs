@@ -97,7 +97,7 @@ fn main() -> Result<(), anyhow::Error> {
     .expect("Error setting Ctrl-C handler");
 
     let storage = get_storage_with_path(&args.storage_path)?;
-    dispatcher_loop::<GarbledJobType>(channel, check_interval, running, storage)?;
+    dispatcher_loop::<GarbledJobType>(channel, check_interval, running, storage, None, true)?;
 
     info!("Shutting down...");
 
