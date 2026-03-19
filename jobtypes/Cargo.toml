@@ -16,3 +16,4 @@ bitvmx-job-dispatcher = { path = "../dispatcher" }
 [features]
 prover = []
 emulator = ["bitvmx-cpu-definitions"]
+garbled = []

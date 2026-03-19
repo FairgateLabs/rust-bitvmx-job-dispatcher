@@ -119,6 +119,7 @@ pub struct Paths {
 pub enum JobType {
     Emulator,
     Risczero,
+    Garbled,
 }
 
 impl Paths {
@@ -126,9 +127,10 @@ impl Paths {
         let my_privk = match job_type {
             JobType::Emulator => format!("{}test-helper/cert/emulator.key", path_corrector),
             JobType::Risczero => format!("{}test-helper/cert/prover.key", path_corrector),
+            JobType::Garbled => format!("{}test-helper/cert/prover.key", path_corrector),
         };
         Self {
-            privk: format!("{}test-helper/cert/emulator.key", path_corrector),
+            privk: format!("{}test-helper/cert/services.key", path_corrector),
             job_dispatcher_key: my_privk,
             yaml_path: format!(
                 "{}../BitVMX-CPU/docker-riscv32/riscv32/build/hello-world.yaml",

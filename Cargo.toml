@@ -5,6 +5,7 @@ members = [
     "dispatcher",
     "risczero-dispatcher",
     "emulator-dispatcher",
+    "garbled-dispatcher",
     "jobtypes",
     "dispatcher-utils",
     "test-helper",
