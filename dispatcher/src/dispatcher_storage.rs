@@ -25,7 +25,7 @@ impl DispatcherStorage {
 
     pub fn contains_job(&self, job_id: &str) -> Result<bool, DispatcherError> {
         let key = job_key(job_id);
-        Ok(self.storage.has_key(&key)?)
+        Ok(self.storage.has_key(&key, None)?)
     }
 
     pub fn persist_job(&self, job_id: &str, raw_msg: &str) -> Result<(), DispatcherError> {
@@ -36,7 +36,7 @@ impl DispatcherStorage {
 
     pub fn get_job(&self, job_id: &str) -> Result<Option<String>, DispatcherError> {
         let key = job_key(job_id);
-        Ok(self.storage.get(&key)?)
+        Ok(self.storage.get(&key, None)?)
     }
 
     pub fn remove_job(&self, job_id: &str) -> Result<(), DispatcherError> {
@@ -46,7 +46,7 @@ impl DispatcherStorage {
     }
 
     pub fn list_jobs(&self) -> Result<Vec<String>, DispatcherError> {
-        let keys = self.storage.partial_compare_keys("job_")?;
+        let keys = self.storage.partial_compare_keys("job_", None)?;
         keys.iter()
             .map(|key| {
                 key.strip_prefix("job_")
@@ -77,10 +77,10 @@ impl DispatcherStorage {
 
     pub fn get_results(&self) -> Result<Vec<(String, (String, Identifier))>, DispatcherError> {
         let mut results = Vec::new();
-        let keys = self.storage.partial_compare_keys("result_")?;
+        let keys = self.storage.partial_compare_keys("result_", None)?;
 
         for jobs in keys {
-            let result: (String, Identifier) = match self.storage.get(&jobs)? {
+            let result: (String, Identifier) = match self.storage.get(&jobs, None)? {
                 Some(res) => res,
                 None => continue,
             };
