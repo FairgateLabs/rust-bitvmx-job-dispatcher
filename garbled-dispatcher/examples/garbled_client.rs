@@ -13,7 +13,7 @@ use tracing::{error, info};
 // 2. Run the broker server (from bitvmx-broker):
 //      cargo run --release --example server -- --port 10000
 // 3. Run the garbled-dispatcher:
-//      cargo run --release --bin bitvmx-garbled-dispatcher -- --port 10000 --my-id 1
+//      cargo run --release --bin bitvmx-garbled-dispatcher -- --my-priv-key ../rust-bitvmx-client/config/keys/garbler.key --port 10000 --my-id 1
 // 4. Run this client example:
 //      cargo run --release --example garbled_client
 
@@ -27,7 +27,7 @@ fn main() {
 fn run_garbled_job(port: u16) -> Result<()> {
     info!("Starting garbled circuit client example...");
 
-    let paths = Paths::new("", test_helper::test_helper::JobType::Risczero);
+    let paths = Paths::new("", test_helper::test_helper::JobType::Garbled);
     let (channel, dest_id) = configure_example_broker(&paths, port)?;
 
     let output_dir = "/tmp/garbled_dispatcher_test";

@@ -127,7 +127,7 @@ impl Paths {
         let my_privk = match job_type {
             JobType::Emulator => format!("{}test-helper/cert/emulator.key", path_corrector),
             JobType::Risczero => format!("{}test-helper/cert/prover.key", path_corrector),
-            JobType::Garbled => format!("{}test-helper/cert/prover.key", path_corrector),
+            JobType::Garbled => format!("{}test-helper/cert/garbler.key", path_corrector),
         };
         Self {
             privk: format!("{}test-helper/cert/services.key", path_corrector),
