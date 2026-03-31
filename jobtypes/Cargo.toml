@@ -1,13 +1,13 @@
 [package]
 name = "bitvmx-job-dispatcher-types"
-version = "0.6.1"
+version = "0.7.0"
 edition = "2021"
 
 [dependencies]
 
 serde = { version = "1.0.219", features = ["derive"] }
-bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", optional = true, tag = "v0.6.1" }
-emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.6.1" }
+bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", optional = true, tag = "v0.7.0" }
+emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.7.0" }
 serde_json = "1.0.96"
 thiserror = "2.0.12"
 hex = "0.4"
