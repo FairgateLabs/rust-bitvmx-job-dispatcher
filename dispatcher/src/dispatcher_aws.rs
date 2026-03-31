@@ -309,7 +309,7 @@ impl DispatcherAwsStorage {
     }
 
     pub fn get_instances(&self) -> Result<Vec<String>, DispatcherError> {
-        Ok(self.db().get(&instances_key())?.unwrap_or_else(|| vec![]))
+        Ok(self.db().get(&instances_key(), None)?.unwrap_or_else(|| vec![]))
     }
 
     pub fn get_all_instances(&self) -> Result<Vec<InstanceInfo>, DispatcherError> {
@@ -338,7 +338,7 @@ impl DispatcherAwsStorage {
     }
 
     pub fn get_instance(&self, instance_id: &str) -> Result<Option<InstanceInfo>, DispatcherError> {
-        Ok(self.db().get(&instance_key(instance_id))?)
+        Ok(self.db().get(&instance_key(instance_id), None)?)
     }
 
     pub fn remove_instance(&self, instance_id: &str) -> Result<(), DispatcherError> {
