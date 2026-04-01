@@ -13,7 +13,7 @@ use tracing::{error, info};
 // 2. Run the broker server (from bitvmx-broker):
 //      cargo run --release --example server -- --port 10000
 // 3. Run the garbled-dispatcher:
-//      cargo run --release --bin bitvmx-garbled-dispatcher -- --port 10000 --my-id 1
+//      cargo run --release --bin bitvmx-garbled-dispatcher -- --my-priv-key ../rust-bitvmx-client/config/keys/garbler.key --port 10000 --my-id 1
 // 4. Run this client example:
 //      cargo run --release --example garbled_client
 
@@ -27,12 +27,14 @@ fn main() {
 fn run_garbled_job(port: u16) -> Result<()> {
     info!("Starting garbled circuit client example...");
 
-    let paths = Paths::new("", test_helper::test_helper::JobType::Risczero);
+    let paths = Paths::new("", test_helper::test_helper::JobType::Garbled);
     let (channel, dest_id) = configure_example_broker(&paths, port)?;
 
     let output_dir = "/tmp/garbled_dispatcher_test";
     let _ = fs::remove_dir_all(output_dir);
     fs::create_dir_all(output_dir)?;
+
+    let circuit_path = "../rust-bitvmx-gc/test-circuits/simple.circuit";
 
     // --- Step 1: Send Prove job ---
     info!("Sending Prove job for 'simple' circuit...");
@@ -45,7 +47,7 @@ fn run_garbled_job(port: u16) -> Result<()> {
         job_id: "prove_simple_001".to_string(),
         job_type: GarbledJobType::Prove(
             input_bytes,
-            "../rust-bitvmx-gc/test-circuits/simple.circuit".to_string(),
+            circuit_path.to_string(),
             format!("{}/prove", output_dir),
         ),
     };
@@ -70,12 +72,23 @@ fn run_garbled_job(port: u16) -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Missing proof_path in result"))?
         .to_string();
 
+    // Save the whole prove_result as public data in json format
+    let public_data = serde_json::to_string(&prove_result)?;
+    let public_data_path = format!("{}/public_data.json", output_dir);
+
+    fs::write(&public_data_path, public_data.clone())?;
+
     // --- Step 2: Send Verify job ---
     info!("Sending Verify job...");
 
     let verify_job = DispatcherJob {
         job_id: "verify_simple_001".to_string(),
-        job_type: GarbledJobType::Verify(proof_path, format!("{}/verify", output_dir)),
+        job_type: GarbledJobType::Verify(
+            proof_path,
+            circuit_path.to_string(),
+            public_data_path,
+            format!("{}/verify", output_dir),
+        ),
     };
 
     let msg = serde_json::to_string(&verify_job)?;

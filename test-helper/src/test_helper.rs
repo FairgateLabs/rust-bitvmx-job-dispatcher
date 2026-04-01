@@ -60,7 +60,7 @@ pub fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
     let routing = RoutingTable::new();
     routing.lock().unwrap().allow_all();
 
-    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap());
+    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap(), None);
 
     let storage = Arc::new(Mutex::new(
         bitvmx_broker::broker_memstorage::MemStorage::new(),
@@ -86,7 +86,12 @@ pub fn config_broker(
     let allow_list = AllowList::new();
     allow_list.lock().unwrap().allow_all();
 
-    let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), cert.get_pubk_hash().unwrap());
+    let config = BrokerConfig::new(
+        PORT,
+        Some(IpAddr::from(ip)),
+        cert.get_pubk_hash().unwrap(),
+        None,
+    );
 
     let channel = match rt {
         Some(rt) => {
@@ -127,7 +132,7 @@ impl Paths {
         let my_privk = match job_type {
             JobType::Emulator => format!("{}test-helper/cert/emulator.key", path_corrector),
             JobType::Risczero => format!("{}test-helper/cert/prover.key", path_corrector),
-            JobType::Garbled => format!("{}test-helper/cert/prover.key", path_corrector),
+            JobType::Garbled => format!("{}test-helper/cert/garbler.key", path_corrector),
         };
         Self {
             privk: format!("{}test-helper/cert/services.key", path_corrector),
@@ -166,6 +171,7 @@ pub fn configure_example_broker(
             port,
             Some(IpAddr::from([127, 0, 0, 1])),
             cert.get_pubk_hash()?,
+            None,
         ),
         cert,
         Some(my_id),

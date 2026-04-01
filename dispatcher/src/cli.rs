@@ -104,8 +104,12 @@ pub fn init() -> Result<
     let allow_list = AllowList::new();
     allow_list.lock().unwrap().allow_all();
 
-    let config: BrokerConfig =
-        BrokerConfig::new(args.port, Some(IpAddr::from(ip)), args.broker_pubk_hash);
+    let config: BrokerConfig = BrokerConfig::new(
+        args.port,
+        Some(IpAddr::from(ip)),
+        args.broker_pubk_hash,
+        None, // Default config
+    );
     let channel = DualChannel::new(&config, cert, Some(my_id), allow_list)?;
     let check_interval = std::time::Duration::from_secs(1);
 
