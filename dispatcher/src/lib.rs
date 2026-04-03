@@ -355,6 +355,7 @@ where
     msg.job_type().prepare_local_input()?;
     let (cmd, args, command_file) = msg.job_type.command()?;
     let cmd = resolve_command_path(&cmd)?;
+    info!("Job id: {}", msg.job_id());
     info!("Command: {:?}", cmd);
     info!("Args: {:?}", args);
 
