@@ -65,6 +65,30 @@ impl DispatcherMessage for GarbledJobType {
                 ];
                 Ok((cmd, args, json))
             }
+            GarbledJobType::Evaluate(circuit_path, public_data, input_labels, output_file_path) => {
+                std::fs::create_dir_all(output_file_path)?;
+                let json = format!("{output_file_path}/output.json");
+                let input_labels_file = format!("{output_file_path}/input_labels.bin");
+                let mut input_labels_bytes = Vec::new();
+                for label in input_labels {
+                    input_labels_bytes.extend_from_slice(label);
+                }
+                std::fs::write(&input_labels_file, input_labels_bytes)?;
+
+                let cmd = Self::gnova_bin();
+                let args = vec![
+                    "evaluate".to_string(),
+                    "--circuit".to_string(),
+                    circuit_path.clone(),
+                    "--public-data".to_string(),
+                    public_data.clone(),
+                    "--input-labels".to_string(),
+                    input_labels_file,
+                    "--json".to_string(),
+                    json.clone(),
+                ];
+                Ok((cmd, args, json))
+            }
         }
     }
 
@@ -72,16 +96,20 @@ impl DispatcherMessage for GarbledJobType {
         match self {
             GarbledJobType::Prove(..) => "ProveResult".to_string(),
             GarbledJobType::Verify(..) => "VerifyResult".to_string(),
+            GarbledJobType::Evaluate(..) => "EvaluateResult".to_string(),
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum GarbledJobType {
-    /// Prove(input_bytes, circuit_file_path, output_dir)
+    /// Prove(input_bits, circuit_file_path, output_dir)
     /// Generates both GC proof and Lamport proof in one command.
     Prove(Vec<u8>, String, String),
     /// Verify(proof_file_path, circuit_file_path, public_data, output_dir)
     /// Verifies both GC proof and Lamport proof (lamport_proof.bin expected in same dir as proof.bin).
     Verify(String, String, String, String),
+    /// Evaluate(circuit_file_path, public_data, input_labels, output_dir)
+    /// Evaluates a circuit with given input labels.
+    Evaluate(String, String, Vec<[u8; 32]>, String),
 }
