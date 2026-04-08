@@ -3,7 +3,7 @@ use std::{fs, thread::sleep, time::Duration};
 use anyhow::Result;
 use bitvmx_broker::channel::channel::DualChannel;
 use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
-use bitvmx_job_dispatcher_types::garbled_messages::GarbledJobType;
+use bitvmx_job_dispatcher_types::garbled_messages::{GCJobProveResult, GarbledJobType, ProofBlob};
 use test_helper::test_helper::{configure_example_broker, init_trace, Paths};
 use tracing::{error, info};
 
@@ -67,16 +67,25 @@ fn run_garbled_job(port: u16) -> Result<()> {
     info!("  digest_ct: {}", prove_result["digest_ct"]);
     info!("  digest_io: {}", prove_result["digest_io"]);
 
-    let proof_path = prove_result["proof_path"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Missing proof_path in result"))?
-        .to_string();
-
     // Save the whole prove_result as public data in json format
     let public_data = serde_json::to_string(&prove_result)?;
     let public_data_path = format!("{}/public_data.json", output_dir);
 
     fs::write(&public_data_path, public_data.clone())?;
+
+    let prove_parsed: GCJobProveResult = serde_json::from_value(prove_result.clone())?;
+
+    let gc_proof_path = &prove_parsed.proof_path;
+    let lamport_proof_path = &prove_parsed.lamport_proof_path;
+
+    let gc_proof = std::fs::read(gc_proof_path)?;
+    let lamport_proof = std::fs::read(lamport_proof_path)?;
+
+    let proof_blob = ProofBlob {
+        prove_result: prove_parsed,
+        gc_proof,
+        lamport_proof,
+    };
 
     // --- Step 2: Send Verify job ---
     info!("Sending Verify job...");
@@ -84,9 +93,8 @@ fn run_garbled_job(port: u16) -> Result<()> {
     let verify_job = DispatcherJob {
         job_id: "verify_simple_001".to_string(),
         job_type: GarbledJobType::Verify(
-            proof_path,
+            proof_blob,
             circuit_path.to_string(),
-            public_data_path,
             format!("{}/verify", output_dir),
         ),
     };

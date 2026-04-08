@@ -42,14 +42,19 @@ impl DispatcherMessage for GarbledJobType {
                 ];
                 Ok((cmd, args, json))
             }
-            GarbledJobType::Verify(
-                proof_file_path,
-                circuit_path,
-                public_data,
-                output_file_path,
-            ) => {
+            GarbledJobType::Verify(proof_blob, circuit_path, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
                 let json = format!("{output_file_path}/output.json");
+
+                let public_data = format!("{output_file_path}/public_data.json");
+                std::fs::write(&public_data, &serde_json::to_vec(&proof_blob.prove_result)?)?;
+
+                let gc_proof = format!("{output_file_path}/gc_proof.bin");
+                std::fs::write(&gc_proof, &proof_blob.gc_proof)?;
+
+                // gnova asumes the lamport_proof is in the same directory as the gc_proof, and named lamport_proof.bin
+                let lamport_proof = format!("{output_file_path}/lamport_proof.bin");
+                std::fs::write(&lamport_proof, &proof_blob.lamport_proof)?;
 
                 let cmd = Self::gnova_bin();
                 let args = vec![
@@ -57,7 +62,7 @@ impl DispatcherMessage for GarbledJobType {
                     "--circuit".to_string(),
                     circuit_path.clone(),
                     "--proof".to_string(),
-                    proof_file_path.clone(),
+                    gc_proof.clone(),
                     "--public-data".to_string(),
                     public_data.clone(),
                     "--json".to_string(),
@@ -65,7 +70,12 @@ impl DispatcherMessage for GarbledJobType {
                 ];
                 Ok((cmd, args, json))
             }
-            GarbledJobType::Evaluate(circuit_path, public_data, input_labels, output_file_path) => {
+            GarbledJobType::Evaluate(
+                circuit_path,
+                prove_result,
+                input_labels,
+                output_file_path,
+            ) => {
                 std::fs::create_dir_all(output_file_path)?;
                 let json = format!("{output_file_path}/output.json");
                 let input_labels_file = format!("{output_file_path}/input_labels.bin");
@@ -74,6 +84,9 @@ impl DispatcherMessage for GarbledJobType {
                     input_labels_bytes.extend_from_slice(label);
                 }
                 std::fs::write(&input_labels_file, input_labels_bytes)?;
+
+                let public_data = format!("{output_file_path}/public_data.json");
+                std::fs::write(&public_data, &serde_json::to_vec(&prove_result)?)?;
 
                 let cmd = Self::gnova_bin();
                 let args = vec![
@@ -106,10 +119,95 @@ pub enum GarbledJobType {
     /// Prove(input_bits, circuit_file_path, output_dir)
     /// Generates both GC proof and Lamport proof in one command.
     Prove(Vec<u8>, String, String),
-    /// Verify(proof_file_path, circuit_file_path, public_data, output_dir)
+    /// Verify(proof_blob, circuit_file_path, output_dir)
     /// Verifies both GC proof and Lamport proof (lamport_proof.bin expected in same dir as proof.bin).
-    Verify(String, String, String, String),
+    Verify(ProofBlob, String, String),
     /// Evaluate(circuit_file_path, public_data, input_labels, output_dir)
     /// Evaluates a circuit with given input labels.
-    Evaluate(String, String, Vec<[u8; 32]>, String),
+    Evaluate(String, GCJobProveResult, Vec<[u8; 32]>, String),
+}
+
+// temporally here until gc repo is public
+/// Garbled gate in hex format for JSON serialization
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum GarbledGateHex {
+    And { ct: String },
+    Noop,
+}
+
+/// Public garbling data for verifier (ct values only - no secrets)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GarblingPublicHex {
+    /// Garbled gates (ct values for AND gates, Noop for XOR/INV)
+    gates: Vec<GarbledGateHex>,
+}
+
+/// SHA256 commitment pair in hex format
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Sha256CommitmentHex {
+    /// SHA256(x0) in hex
+    pub h0: String,
+    /// SHA256(x1) in hex
+    pub h1: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GCJobProveResult {
+    pub status: String,
+    pub r#type: String,
+    pub circuit_file: String,
+    pub num_gates: usize,
+    pub num_inputs: usize,
+    /// Path to GC proof
+    pub proof_path: String,
+    /// Path to Lamport proof
+    pub lamport_proof_path: String,
+    /// Path to input labels
+    pub io_inputs_path: String,
+    /// GC proof digests
+    pub digest_circ: String,
+    pub digest_ct: String,
+    pub digest_io: String,
+    /// Lamport proof digests
+    pub digest_labels: String,
+    pub digest_lamport: String,
+    /// Public garbling data (ct values only, no secrets)
+    pub garbling_public: GarblingPublicHex,
+    /// SHA256 commitments to wire labels (public Lamport commitments)
+    pub sha256_commitments: Vec<Sha256CommitmentHex>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProofBlob {
+    pub prove_result: GCJobProveResult,
+    pub gc_proof: Vec<u8>,
+    pub lamport_proof: Vec<u8>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GCJobVerifyResult {
+    status: String,
+    r#type: String,
+    /// All verifications passed (proofs valid + all digests match)
+    valid: bool,
+    /// GC proof digests (from proof)
+    digest_circ: String,
+    digest_ct: String,
+    digest_io: String,
+    /// Lamport proof digests (from proof)
+    digest_labels: String,
+    digest_lamport: String,
+    /// Individual verification results
+    gc_proof_valid: bool,
+    lamport_proof_valid: bool,
+    proofs_linked: bool,
+    digest_circ_matches: bool,
+    digest_ct_matches: bool,
+    digest_lamport_matches: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GCJobEvaluationResult {
+    pub output: Vec<Vec<u8>>,
 }
