@@ -309,7 +309,10 @@ impl DispatcherAwsStorage {
     }
 
     pub fn get_instances(&self) -> Result<Vec<String>, DispatcherError> {
-        Ok(self.db().get(&instances_key(), None)?.unwrap_or_else(|| vec![]))
+        Ok(self
+            .db()
+            .get(&instances_key(), None)?
+            .unwrap_or_else(|| vec![]))
     }
 
     pub fn get_all_instances(&self) -> Result<Vec<InstanceInfo>, DispatcherError> {
