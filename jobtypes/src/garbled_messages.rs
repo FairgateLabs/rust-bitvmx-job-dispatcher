@@ -52,7 +52,6 @@ impl DispatcherMessage for GarbledJobType {
                 let gc_proof = format!("{output_file_path}/gc_proof.bin");
                 std::fs::write(&gc_proof, &proof_blob.gc_proof)?;
 
-                // gnova asumes the lamport_proof is in the same directory as the gc_proof, and named lamport_proof.bin
                 let lamport_proof = format!("{output_file_path}/lamport_proof.bin");
                 std::fs::write(&lamport_proof, &proof_blob.lamport_proof)?;
 
@@ -63,6 +62,8 @@ impl DispatcherMessage for GarbledJobType {
                     circuit_path.clone(),
                     "--proof".to_string(),
                     gc_proof.clone(),
+                    "--lamport-proof".to_string(),
+                    lamport_proof.clone(),
                     "--public-data".to_string(),
                     public_data.clone(),
                     "--json".to_string(),
