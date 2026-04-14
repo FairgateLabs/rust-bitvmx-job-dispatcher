@@ -7,9 +7,9 @@ pub trait DispatcherMessage {
     fn prepare_remote_input(&self) -> Result<Vec<(Vec<u8>, String, String)>, DispatcherError> {
         Ok(vec![(vec![], String::new(), String::new())])
     }
-    fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError>;
+    fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError>;
     fn message_type(&self) -> String;
-    fn commit_checkpoint(&self) -> Result<(), DispatcherError> {
+    fn commit_checkpoint(&self, _output_temp_path: String) -> Result<(), DispatcherError> {
         Ok(())
     }
 }
