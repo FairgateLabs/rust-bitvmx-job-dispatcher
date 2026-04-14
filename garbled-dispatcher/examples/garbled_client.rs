@@ -40,13 +40,9 @@ fn run_garbled_job(port: u16) -> Result<()> {
     info!("Sending Prove job for 'simple' circuit...");
 
     // Simple circuit: y = (a & b) ^ d
-    // Input: a=1, b=1, d=0 => y = (1 & 1) ^ 0 = 1
-    let input_bytes: Vec<u8> = vec![1, 1, 0];
-
     let prove_job = DispatcherJob {
         job_id: "prove_simple_001".to_string(),
         job_type: GarbledJobType::Prove(
-            input_bytes,
             circuit_path.to_string(),
             format!("{}/prove", output_dir),
         ),
