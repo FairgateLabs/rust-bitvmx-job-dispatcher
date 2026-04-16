@@ -36,13 +36,15 @@ use crate::{
 pub struct JobContext {
     pub job_id: String,
     pub result_file: String,
+    pub temp_checkpoint_output_path: String,
 }
 
 impl JobContext {
-    pub fn new(job_id: String, result_file: String) -> Self {
+    pub fn new(job_id: String, result_file: String, temp_checkpoint_output_path: String) -> Self {
         Self {
             job_id,
             result_file,
+            temp_checkpoint_output_path,
         }
     }
 }
@@ -230,7 +232,7 @@ where
                                             "Successfully extracted structured JSON for job {}: {}",
                                             context.job_id, res
                                         );
-                                        job.job_type().commit_checkpoint()?;
+                                        job.job_type().commit_checkpoint(context.temp_checkpoint_output_path.clone())?;
                                         (res, false)
                                     }
                                     Err(e) => {
@@ -353,13 +355,13 @@ where
     V: DispatcherMessage + DeserializeOwned,
 {
     msg.job_type().prepare_local_input()?;
-    let (cmd, args, command_file) = msg.job_type.command()?;
+    let (cmd, args, command_file, temp_checkpoint_output_path) = msg.job_type.command()?;
     let cmd = resolve_command_path(&cmd)?;
     info!("Job id: {}", msg.job_id());
     info!("Command: {:?}", cmd);
     info!("Args: {:?}", args);
 
-    let job_context = JobContext::new(msg.job_id.clone(), command_file.clone());
+    let job_context = JobContext::new(msg.job_id.clone(), command_file.clone(), temp_checkpoint_output_path);
     let child = Command::new(cmd).args(args).spawn()?;
 
     Ok((child, job_context))

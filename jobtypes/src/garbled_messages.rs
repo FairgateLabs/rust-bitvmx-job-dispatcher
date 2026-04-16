@@ -20,7 +20,7 @@ impl GarbledJobType {
 }
 
 impl DispatcherMessage for GarbledJobType {
-    fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
+    fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
         match self {
             GarbledJobType::Prove(circuit_path, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
@@ -35,7 +35,7 @@ impl DispatcherMessage for GarbledJobType {
                     "--json".to_string(),
                     json.clone(),
                 ];
-                Ok((cmd, args, json))
+                Ok((cmd, args, json, "".to_string()))
             }
             GarbledJobType::Verify(proof_blob, circuit_path, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
@@ -64,7 +64,7 @@ impl DispatcherMessage for GarbledJobType {
                     "--json".to_string(),
                     json.clone(),
                 ];
-                Ok((cmd, args, json))
+                Ok((cmd, args, json, "".to_string()))
             }
             GarbledJobType::Evaluate(
                 circuit_path,
@@ -96,7 +96,7 @@ impl DispatcherMessage for GarbledJobType {
                     "--json".to_string(),
                     json.clone(),
                 ];
-                Ok((cmd, args, json))
+                Ok((cmd, args, json, "".to_string()))
             }
         }
     }

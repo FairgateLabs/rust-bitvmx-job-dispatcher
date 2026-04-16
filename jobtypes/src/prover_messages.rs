@@ -28,7 +28,7 @@ impl DispatcherMessage for ProverJobType {
         }
     }
 
-    fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
+    fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
         match self {
             ProverJobType::Prove(_input_value, elf, output_file_path) => {
                 let input_file = format!("{output_file_path}/input.bin");
@@ -50,7 +50,7 @@ impl DispatcherMessage for ProverJobType {
                         --json-input {json}"
                     ),
                 ];
-                Ok((cmd, args, json))
+                Ok((cmd, args, json, "".to_string()))
             }
         }
     }
