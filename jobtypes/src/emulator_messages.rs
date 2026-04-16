@@ -1,5 +1,5 @@
 use std::{
-    env::temp_dir, fs, path::PathBuf
+    fs, path::PathBuf
 };
 
 use bitvmx_cpu_definitions::{
@@ -27,7 +27,7 @@ const EMULATOR_PATH: &str = "../BitVMX-CPU/target/release/emulator";
 
 impl DispatcherMessage for EmulatorJobType {
     fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
-        let output_path = self.create_random_output_path()?;
+        let output_path = self.create_output_path()?.unwrap_or_else(|| "".to_string());
         let checkpoint_path = self.checkpoint_input()?.unwrap_or_else(|| "".to_string());
         match self {
             EmulatorJobType::Execute(elf, command_file) => {
@@ -399,11 +399,14 @@ impl EmulatorJobType {
         Ok(serde_json::to_string(self)?)
     }
 
-    pub fn create_random_output_path(&self) -> Result<String, DispatcherError> {
-        let uuid = Uuid::new_v4();
-        let output_path = temp_dir().join(format!("emulator_output_{}", uuid));
-        fs::create_dir_all(&output_path)?;
-        Ok(output_path.to_string_lossy().to_string())
+    pub fn create_output_path(&self) -> Result<Option<String>, DispatcherError> {
+        if let Some(base) = self.checkpoint_input()? {
+            let output_path = format!("{}/output_{}", base, Uuid::new_v4());
+            std::fs::create_dir_all(&output_path)?;
+            Ok(Some(output_path))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn checkpoint_input(&self) -> Result<Option<String>, DispatcherError> {
@@ -422,10 +425,10 @@ impl EmulatorJobType {
         }
     }
 
-    pub fn commit_checkpoint(&self, output_temp_path: String) -> Result<(), DispatcherError> {
+    pub fn commit_checkpoint(&self, output_path: String) -> Result<(), DispatcherError> {
         if let Some(checkpoint_path) = self.checkpoint_input()? {
             let base = PathBuf::from(checkpoint_path);
-            let temp_checkpoint_path = PathBuf::from(output_temp_path);
+            let temp_checkpoint_path = PathBuf::from(output_path);
             for entry in fs::read_dir(&temp_checkpoint_path)? {
                 let entry = entry?;
                 let file_type = entry.file_type()?;
@@ -434,6 +437,7 @@ impl EmulatorJobType {
                     fs::copy(entry.path(), base.join(file_name))?;
                 }
             }
+            fs::remove_dir_all(temp_checkpoint_path)?;
         }
         
         Ok(())
