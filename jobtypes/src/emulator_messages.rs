@@ -423,25 +423,19 @@ impl EmulatorJobType {
     }
 
     pub fn commit_checkpoint(&self, output_temp_path: String) -> Result<(), DispatcherError> {
-        match self {
-            EmulatorJobType::Execute(_, _) => {
-                Ok(())
-            }
-            _ => {
-                let base = PathBuf::from(self.checkpoint_input()?
-                    .ok_or_else(|| DispatcherError::CheckpointPathError("No checkpoint path found for this job type".to_string()))?);
-                let temp_checkpoint_path = PathBuf::from(output_temp_path);
-                for entry in fs::read_dir(&temp_checkpoint_path)? {
-                    let entry = entry?;
-                    let file_type = entry.file_type()?;
-                    if file_type.is_file() {
-                        let file_name = entry.file_name();
-                        fs::copy(entry.path(), base.join(file_name))?;
-                    }
+        if let Some(checkpoint_path) = self.checkpoint_input()? {
+            let base = PathBuf::from(checkpoint_path);
+            let temp_checkpoint_path = PathBuf::from(output_temp_path);
+            for entry in fs::read_dir(&temp_checkpoint_path)? {
+                let entry = entry?;
+                let file_type = entry.file_type()?;
+                if file_type.is_file() {
+                    let file_name = entry.file_name();
+                    fs::copy(entry.path(), base.join(file_name))?;
                 }
-                
-                Ok(())
             }
         }
+        
+        Ok(())
     }
 }
