@@ -76,8 +76,9 @@ impl DispatcherMessage for GarbledJobType {
                 let json = format!("{output_file_path}/output.json");
                 let input_labels_file = format!("{output_file_path}/input_labels.bin");
                 let mut input_labels_bytes = Vec::new();
-                for label in input_labels {
+                for (label, bit) in input_labels {
                     input_labels_bytes.extend_from_slice(label);
+                    input_labels_bytes.push(*bit);
                 }
                 std::fs::write(&input_labels_file, input_labels_bytes)?;
 
@@ -120,7 +121,7 @@ pub enum GarbledJobType {
     Verify(ProofBlob, String, String),
     /// Evaluate(circuit_file_path, public_data, input_labels, output_dir)
     /// Evaluates a circuit with given input labels.
-    Evaluate(String, GCJobProveResult, Vec<[u8; 32]>, String),
+    Evaluate(String, GCJobProveResult, Vec<([u8; 32], u8)>, String),
 }
 
 // temporally here until gc repo is public
