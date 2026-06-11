@@ -1,13 +1,13 @@
 [package]
 name = "test-helper"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2024"
 
 [dependencies]
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.7.3" }
+bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.7.4" }
 bitvmx-job-dispatcher = { path = "../dispatcher" }
-rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.7.3" }
+rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.7.4" }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0.95"
