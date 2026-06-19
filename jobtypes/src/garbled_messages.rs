@@ -173,6 +173,7 @@ pub struct GCJobProveResult {
     pub garbling_public: GarblingPublicHex,
     /// SHA256 commitments to wire labels (public Lamport commitments)
     pub sha256_commitments: Vec<Sha256CommitmentHex>,
+    pub input_commitment_indices: Vec<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
