@@ -22,6 +22,20 @@ impl GarbledJobType {
 impl DispatcherMessage for GarbledJobType {
     fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
         match self {
+            GarbledJobType::ImportProof(from_path, to_path) => {
+                std::fs::create_dir_all(to_path)?;
+                let json = format!("{to_path}/output.json");
+                let cmd = Self::gnova_bin();
+                let args = vec![
+                    "import-proof".to_string(),
+                    "--from".to_string(),
+                    from_path.to_string(),
+                    "--to".to_string(),
+                    to_path.to_string(),
+                ];
+
+                Ok((cmd, args, json, "".to_string()))
+            }
             GarbledJobType::Prove(circuit_path, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
                 let json = format!("{output_file_path}/output.json");
@@ -104,6 +118,8 @@ impl DispatcherMessage for GarbledJobType {
 
     fn message_type(&self) -> String {
         match self {
+            // ImportProof returns exacly the same struct as Prove, instead of generating a new one it uses an already saved one.
+            GarbledJobType::ImportProof(..) => "ProveResult".to_string(),
             GarbledJobType::Prove(..) => "ProveResult".to_string(),
             GarbledJobType::Verify(..) => "VerifyResult".to_string(),
             GarbledJobType::Evaluate(..) => "EvaluateResult".to_string(),
@@ -113,6 +129,8 @@ impl DispatcherMessage for GarbledJobType {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum GarbledJobType {
+    /// ImportProof(from_path, to_path)
+    ImportProof(String, String),
     /// Prove(circuit_file_path, output_dir)
     /// Generates both GC proof and Lamport proof in one command.
     Prove(String, String),
@@ -173,6 +191,7 @@ pub struct GCJobProveResult {
     pub garbling_public: GarblingPublicHex,
     /// SHA256 commitments to wire labels (public Lamport commitments)
     pub sha256_commitments: Vec<Sha256CommitmentHex>,
+    pub input_commitment_indices: Vec<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
