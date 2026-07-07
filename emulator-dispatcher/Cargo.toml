@@ -1,6 +1,6 @@
 [package]
 name = "bitvmx-emulator-dispatcher"
-version = "0.7.4"
+version = "0.7.5"
 edition = "2021"
 
 [dependencies]
@@ -12,10 +12,10 @@ anyhow = "1.0.95"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
 
-bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.7.4" }
-bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.7.4" }
+bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.7.5" }
+bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.7.5" }
 bitvmx-job-dispatcher-types = { path = "../jobtypes", features = ["emulator"] }
-emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.7.4" }
+emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.7.5" }
 bitvmx-job-dispatcher = { path = "../dispatcher" }
 hex = "0.4"
 clap = { version = "4.5.32", features = ["derive"] }
