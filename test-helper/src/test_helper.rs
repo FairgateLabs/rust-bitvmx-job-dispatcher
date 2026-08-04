@@ -8,9 +8,9 @@ use std::{
 };
 
 use bitvmx_broker::{
-    channel::channel::DualChannel,
+    RemoteChannel,
     identification::{allow_list::AllowList, identifier::Identifier, routing::RoutingTable},
-    rpc::{BrokerConfig, sync_server::BrokerSync, tls_helper::Cert},
+    rpc::{BrokerConfig, tls_helper::Cert}, BrokerServer,
 };
 use bitvmx_job_dispatcher::{get_storage_with_path, helper::remove_storage_path};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -51,7 +51,7 @@ fn config_trace_aux() {
 // Broker / Server Setup
 // ======================================================
 
-pub fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
+pub fn init_server(port: u16) -> Result<BrokerServer, anyhow::Error> {
     let privk = fs::read_to_string("test-helper/cert/services.key").unwrap();
     let cert = Cert::new_with_privk(&privk).unwrap();
     let allow_list = AllowList::new();
@@ -62,12 +62,10 @@ pub fn init_server(port: u16) -> Result<BrokerSync, anyhow::Error> {
 
     let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap(), None);
 
-    let storage = Arc::new(Mutex::new(
-        bitvmx_broker::broker_memstorage::MemStorage::new(),
-    ));
+    let storage = Arc::new(Mutex::new(bitvmx_broker::storage::memory::MemStorage::new()));
 
     let server =
-        BrokerSync::new(&config, storage.clone(), cert, allow_list.clone(), routing).unwrap();
+        BrokerServer::new(&config, storage.clone(), cert, allow_list.clone(), routing).unwrap();
 
     Ok(server)
 }
@@ -76,7 +74,7 @@ pub fn config_broker(
     rt: Option<Arc<Mutex<Runtime>>>,
     storage_path: &str,
     paths: &Paths,
-) -> (DualChannel, Duration, Rc<Storage>) {
+) -> (RemoteChannel, Duration, Rc<Storage>) {
     let ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
     let my_id = 1;
 
@@ -95,9 +93,9 @@ pub fn config_broker(
 
     let channel = match rt {
         Some(rt) => {
-            DualChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt).unwrap()
+            RemoteChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt).unwrap()
         }
-        None => DualChannel::new(&config, cert, Some(my_id), allow_list).unwrap(),
+        None => RemoteChannel::new(&config, cert, Some(my_id), allow_list).unwrap(),
     };
 
     let check_interval = Duration::from_secs(1);
@@ -155,7 +153,7 @@ impl Paths {
 pub fn configure_example_broker(
     paths: &Paths,
     port: u16,
-) -> Result<(DualChannel, Identifier), anyhow::Error> {
+) -> Result<(RemoteChannel, Identifier), anyhow::Error> {
     let privk = fs::read_to_string(paths.privk.clone())?;
 
     let my_id = 2;
@@ -166,7 +164,7 @@ pub fn configure_example_broker(
     let allow_list = AllowList::new();
     allow_list.lock().unwrap().allow_all();
 
-    let channel = DualChannel::new(
+    let channel = RemoteChannel::new(
         &BrokerConfig::new(
             port,
             Some(IpAddr::from([127, 0, 0, 1])),
@@ -189,7 +187,7 @@ pub fn configure_example_broker(
 }
 
 pub fn wait_for_result<T, F>(
-    channel: &DualChannel,
+    channel: &RemoteChannel,
     max_attempts: usize,
     delay_secs: u64,
     mut parser: F,

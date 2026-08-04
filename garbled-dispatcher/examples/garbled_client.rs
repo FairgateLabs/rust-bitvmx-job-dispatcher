@@ -1,7 +1,7 @@
 use std::{fs, thread::sleep, time::Duration};
 
 use anyhow::Result;
-use bitvmx_broker::channel::channel::DualChannel;
+use bitvmx_broker::RemoteChannel;
 use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
 use bitvmx_job_dispatcher_types::garbled_messages::{GCJobProveResult, GarbledJobType, ProofBlob};
 use test_helper::test_helper::{configure_example_broker, init_trace, Paths};
@@ -124,7 +124,7 @@ fn run_garbled_job(port: u16) -> Result<()> {
 }
 
 fn wait_for_result(
-    channel: &DualChannel,
+    channel: &RemoteChannel,
     expected_type: &str,
     max_attempts: usize,
     delay_secs: u64,
