@@ -55,7 +55,7 @@ pub fn init_server(port: u16) -> Result<BrokerServer, anyhow::Error> {
     let privk = fs::read_to_string("test-helper/cert/services.key").unwrap();
     let cert = Cert::new_with_privk(&privk).unwrap();
     let allow_list = AllowList::new();
-    allow_list.lock().unwrap().allow_all();
+    allow_list.lock().unwrap().set_allow_all(true);
 
     let routing = RoutingTable::new();
     routing.lock().unwrap().allow_all();
@@ -82,7 +82,7 @@ pub fn config_broker(
     let cert = Cert::new_with_privk(&privk).unwrap();
 
     let allow_list = AllowList::new();
-    allow_list.lock().unwrap().allow_all();
+    allow_list.lock().unwrap().set_allow_all(true);
 
     let config = BrokerConfig::new(
         PORT,
@@ -162,7 +162,7 @@ pub fn configure_example_broker(
     let cert = Cert::new_with_privk(&privk)?;
 
     let allow_list = AllowList::new();
-    allow_list.lock().unwrap().allow_all();
+    allow_list.lock().unwrap().set_allow_all(true);
 
     let channel = RemoteChannel::new(
         &BrokerConfig::new(

@@ -102,7 +102,7 @@ pub fn init() -> Result<
     let cert = Cert::new_with_privk(&privk)?;
 
     let allow_list = AllowList::new();
-    allow_list.lock().unwrap().allow_all();
+    allow_list.lock().unwrap().set_allow_all(true);
 
     let config: BrokerConfig = BrokerConfig::new(
         args.port,
