@@ -11,7 +11,7 @@ use tracing::error;
 //      cargo run --release --example challenge
 pub mod emulator {
 
-    use bitvmx_broker::channel::channel::DualChannel;
+    use bitvmx_broker::RemoteChannel;
     use bitvmx_cpu_definitions::challenge::{EmulatorResultType, ProverFinalTraceType};
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::emulator_messages::EmulatorJobType;
@@ -187,7 +187,7 @@ pub mod emulator {
     }
 
     fn wait_for_typed_result(
-        channel: &DualChannel,
+        channel: &RemoteChannel,
         expected_type: &str,
         max_attempts: usize,
         delay_secs: u64,

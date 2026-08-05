@@ -18,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-use bitvmx_broker::{channel::channel::DualChannel, identification::identifier::Identifier};
+use bitvmx_broker::{RemoteChannel, identification::identifier::Identifier};
 
 use bitvmx_dispatcher_utils::{Msg, PingMessage};
 use dispatcher_job::ResultMessage;
@@ -49,7 +49,7 @@ impl JobContext {
     }
 }
 pub struct DispatcherHandler<T: DispatcherMessage + DeserializeOwned> {
-    channel: DualChannel,
+    channel: RemoteChannel,
     workers: Vec<(Child, Identifier, JobContext)>,
     storage: Rc<DispatcherStorage>,
     _phantom_data: std::marker::PhantomData<T>,
@@ -63,7 +63,7 @@ where
     T: DispatcherMessage + DeserializeOwned,
 {
     pub fn new(
-        channel: DualChannel,
+        channel: RemoteChannel,
         storage: Rc<Storage>,
         config: Option<String>,
         #[cfg(feature = "aws")] local_mode: bool,
@@ -108,7 +108,7 @@ where
     }
 
     pub fn new_with_path(
-        channel: DualChannel,
+        channel: RemoteChannel,
         storage_path: &str,
         config: Option<String>,
         local_mode: bool,
@@ -318,7 +318,7 @@ where
 }
 
 pub fn dispatcher_loop<T: DispatcherMessage + DeserializeOwned + std::fmt::Debug>(
-    channel: DualChannel,
+    channel: RemoteChannel,
     check_interval: Duration,
     running: Arc<AtomicBool>,
     storage: Rc<Storage>,

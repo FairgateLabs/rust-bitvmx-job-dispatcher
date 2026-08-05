@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::Result;
 use bitvmx_broker::{
-    channel::channel::DualChannel,
+    RemoteChannel,
     identification::allow_list::AllowList,
     rpc::{tls_helper::Cert, BrokerConfig},
 };
@@ -76,7 +76,7 @@ fn init_trace() -> Result<(), DispatcherError> {
 
 pub fn init() -> Result<
     (
-        DualChannel,
+        RemoteChannel,
         Duration,
         Arc<AtomicBool>,
         Rc<Storage>,
@@ -110,7 +110,7 @@ pub fn init() -> Result<
         args.broker_pubk_hash,
         None, // Default config
     );
-    let channel = DualChannel::new(&config, cert, Some(my_id), allow_list)?;
+    let channel = RemoteChannel::new(&config, cert, Some(my_id), allow_list)?;
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));

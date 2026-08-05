@@ -13,7 +13,7 @@ mod challenge;
 //      cargo run --release --example challenge --features "emulator"
 
 pub mod emulator {
-    use bitvmx_broker::channel::channel::DualChannel;
+    use bitvmx_broker::RemoteChannel;
     use bitvmx_dispatcher_utils::PingMessage;
     use test_helper::test_helper::{configure_example_broker, wait_for_result, Paths};
     use tracing::info;
@@ -40,7 +40,7 @@ pub mod emulator {
     }
 
     fn wait_for_ping(
-        channel: &DualChannel,
+        channel: &RemoteChannel,
         max_attempts: usize,
         delay_secs: u64,
     ) -> Result<PingMessage, anyhow::Error> {
