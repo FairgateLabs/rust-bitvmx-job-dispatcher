@@ -62,10 +62,12 @@ pub fn init_server(port: u16) -> Result<BrokerServer, anyhow::Error> {
 
     let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap(), None);
 
-    let storage = Arc::new(Mutex::new(bitvmx_broker::storage::memory::MemStorage::new()));
+    // The server opens its own storage from this path, so start each run from a clean one.
+    let storage_path = format!("temp-runs/broker_server_{}.db", port);
+    remove_storage_path(&storage_path);
 
     let server =
-        BrokerServer::new(&config, storage.clone(), cert, allow_list.clone(), routing).unwrap();
+        BrokerServer::new(&config, &storage_path, cert, allow_list.clone(), routing).unwrap();
 
     Ok(server)
 }
