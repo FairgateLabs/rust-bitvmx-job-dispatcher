@@ -169,7 +169,7 @@ where
                     Err(e) => {
                         // Retrying can never make this parse, and leaving it in place would block
                         // every message behind it, so it is dropped.
-                        warn!("Discarding undecodable message from {}: {:?}", msg.id, e);
+                        error!("Discarding undecodable message from {}: {:?}", msg.id, e);
                         self.channel.ack(uid)?;
                         return Ok(());
                     }
