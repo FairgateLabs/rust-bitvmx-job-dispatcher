@@ -11,9 +11,9 @@ use std::{
 
 use anyhow::Result;
 use bitvmx_broker::{
-    RemoteChannel,
     identification::allow_list::AllowList,
     rpc::{tls_helper::Cert, BrokerConfig},
+    RemoteChannel,
 };
 
 use clap::Parser;

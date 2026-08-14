@@ -8,9 +8,9 @@ use std::{
 };
 
 use bitvmx_broker::{
-    RemoteChannel,
+    BrokerServer, RemoteChannel,
     identification::{allow_list::AllowList, identifier::Identifier, routing::RoutingTable},
-    rpc::{BrokerConfig, tls_helper::Cert}, BrokerServer,
+    rpc::{BrokerConfig, tls_helper::Cert},
 };
 use bitvmx_job_dispatcher::{get_storage_with_path, helper::remove_storage_path};
 use std::sync::atomic::{AtomicBool, Ordering};
