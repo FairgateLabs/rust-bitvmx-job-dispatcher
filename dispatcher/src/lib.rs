@@ -18,7 +18,7 @@ use std::{
     time::Duration,
 };
 
-use bitvmx_broker::{RemoteChannel, identification::identifier::Identifier};
+use bitvmx_broker::{identification::identifier::Identifier, RemoteChannel};
 
 use bitvmx_dispatcher_utils::{Msg, PingMessage};
 use dispatcher_job::ResultMessage;
@@ -136,21 +136,25 @@ where
         Ok(())
     }
 
+    // Takes one message and acknowledges it only once whatever it caused is safely stored.
     fn create_new_jobs(&mut self) -> Result<(), DispatcherError> {
-        let msg = self.channel.recv();
+        let msg = self.channel.get();
         if msg.is_err() {
             warn!("Failed to receive message from channel: {:?}", msg.err());
             return Ok(());
         }
-        let msg = msg.unwrap();
 
-        if let Some(msg) = msg {
-            let msg = Msg::from_msg(msg.clone());
+        if let Some(msg) = msg.unwrap() {
+            let uid = msg.uid;
+            let msg = Msg::from_msg((msg.msg, msg.from));
+
             if let Some(message) = serde_json::from_str::<PingMessage>(&msg.raw).ok() {
                 match message {
                     PingMessage::Ping => debug!("Received Ping"),
                     PingMessage::Pong => {
                         warn!("Job Dispatcher should not receive Pong");
+                        // Consumed even though it is ignored, otherwise it stays at the head of the queue for ever.
+                        self.channel.ack(uid)?;
                         return Ok(());
                     }
                 }
@@ -158,8 +162,19 @@ where
                 let pong = serde_json::to_string(&PingMessage::Pong)?;
 
                 self.channel.send(&msg.id, pong)?;
+                self.channel.ack(uid)?;
             } else {
-                let job: DispatcherJob<T> = decode_msg(&msg.raw)?;
+                let job: DispatcherJob<T> = match decode_msg(&msg.raw) {
+                    Ok(job) => job,
+                    Err(e) => {
+                        // Retrying can never make this parse, and leaving it in place would block
+                        // every message behind it, so it is dropped.
+                        warn!("Discarding undecodable message from {}: {:?}", msg.id, e);
+                        self.channel.ack(uid)?;
+                        return Ok(());
+                    }
+                };
+
                 if self.storage.contains_job(&job.job_id())? {
                     warn!("Job with id {} already exists, skipping", job.job_id());
                 } else {
@@ -169,6 +184,7 @@ where
                         self.workers.push((child, msg.id.clone(), context));
                     }
                 }
+                self.channel.ack(uid)?;
             }
         }
         Ok(())
@@ -232,7 +248,9 @@ where
                                             "Successfully extracted structured JSON for job {}: {}",
                                             context.job_id, res
                                         );
-                                        job.job_type().commit_checkpoint(context.temp_checkpoint_output_path.clone())?;
+                                        job.job_type().commit_checkpoint(
+                                            context.temp_checkpoint_output_path.clone(),
+                                        )?;
                                         (res, false)
                                     }
                                     Err(e) => {
@@ -361,7 +379,11 @@ where
     info!("Command: {:?}", cmd);
     info!("Args: {:?}", args);
 
-    let job_context = JobContext::new(msg.job_id.clone(), command_file.clone(), temp_checkpoint_output_path);
+    let job_context = JobContext::new(
+        msg.job_id.clone(),
+        command_file.clone(),
+        temp_checkpoint_output_path,
+    );
     let child = Command::new(cmd).args(args).spawn()?;
 
     Ok((child, job_context))

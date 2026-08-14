@@ -28,10 +28,17 @@ impl DispatcherStorage {
         Ok(self.storage.has_key(&key, None)?)
     }
 
+    /// Persists a job to the storage backend. Uses a transaction to ensure that the job is fully persisted.
     pub fn persist_job(&self, job_id: &str, raw_msg: &str) -> Result<(), DispatcherError> {
         let key = job_key(job_id);
-        self.storage.set(&key, raw_msg.to_string(), None)?;
-        Ok(())
+        let tx = self.storage.begin_transaction();
+        match self.storage.set(&key, raw_msg.to_string(), Some(tx)) {
+            Ok(()) => Ok(self.storage.commit_transaction(tx)?),
+            Err(e) => {
+                let _ = self.storage.rollback_transaction(tx);
+                Err(e.into())
+            }
+        }
     }
 
     pub fn get_job(&self, job_id: &str) -> Result<Option<String>, DispatcherError> {
@@ -68,11 +75,19 @@ impl DispatcherStorage {
         result: (String, Identifier),
     ) -> Result<(), DispatcherError> {
         let key = result_key(job_id);
-        let tx = Some(self.storage.begin_transaction());
-        self.storage.set(&key, result, tx)?;
-        self.storage.remove(&job_key(job_id), tx)?;
-        self.storage.commit_transaction(tx.unwrap())?;
-        Ok(())
+        let tx = self.storage.begin_transaction();
+        let written = self
+            .storage
+            .set(&key, result, Some(tx))
+            .and_then(|_| self.storage.remove(&job_key(job_id), Some(tx)));
+
+        match written {
+            Ok(()) => Ok(self.storage.commit_transaction(tx)?),
+            Err(e) => {
+                let _ = self.storage.rollback_transaction(tx);
+                Err(e.into())
+            }
+        }
     }
 
     pub fn get_results(&self) -> Result<Vec<(String, (String, Identifier))>, DispatcherError> {
