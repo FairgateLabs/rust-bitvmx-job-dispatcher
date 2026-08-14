@@ -42,10 +42,7 @@ fn run_garbled_job(port: u16) -> Result<()> {
     // Simple circuit: y = (a & b) ^ d
     let prove_job = DispatcherJob {
         job_id: "prove_simple_001".to_string(),
-        job_type: GarbledJobType::Prove(
-            circuit_path.to_string(),
-            format!("{}/prove", output_dir),
-        ),
+        job_type: GarbledJobType::Prove(circuit_path.to_string(), format!("{}/prove", output_dir)),
     };
 
     let msg = serde_json::to_string(&prove_job)?;

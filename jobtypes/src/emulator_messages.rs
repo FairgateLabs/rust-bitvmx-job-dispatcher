@@ -1,6 +1,4 @@
-use std::{
-    fs, path::PathBuf
-};
+use std::{fs, path::PathBuf};
 
 use bitvmx_cpu_definitions::{
     //challenge::{ChallengeType, EmulatorResultType},
@@ -41,7 +39,12 @@ impl DispatcherMessage for EmulatorJobType {
                     "--command-file".to_string(),
                     command_file.clone(),
                 ];
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), "".to_string()))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    "".to_string(),
+                ))
             }
             EmulatorJobType::ProverExecute(yaml, input, _, command_file, fail_config_prover) => {
                 let hex_input = hex::encode(input);
@@ -65,7 +68,12 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcp.to_string());
                 }
 
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), output_path))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
             }
             EmulatorJobType::VerifierCheckExecution(
                 yaml,
@@ -104,7 +112,12 @@ impl DispatcherMessage for EmulatorJobType {
                 args.push("--force".to_string());
                 args.push(force.to_string());
 
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), output_path))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
             }
             EmulatorJobType::ProverGetHashesForRound(
                 pdf,
@@ -138,7 +151,12 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcp.to_string());
                 }
 
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), output_path))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
             }
             EmulatorJobType::VerifierChooseSegment(
                 pdf,
@@ -176,7 +194,12 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(i.to_string());
                 }
 
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), output_path))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
             }
             EmulatorJobType::ProverFinalTrace(
                 pdf,
@@ -204,7 +227,12 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcp.to_string());
                 }
 
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), output_path))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
             }
             EmulatorJobType::VerifierChooseChallenge(
                 pdf,
@@ -241,7 +269,12 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcv.to_string());
                 }
 
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), output_path))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
             }
             EmulatorJobType::VerifierChooseChallengeForReadChallenge(
                 pdf,
@@ -275,7 +308,12 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcv.to_string());
                 }
 
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), output_path))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
             }
             EmulatorJobType::ProverGetHashesAndStep(
                 pdf,
@@ -301,7 +339,12 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcp.to_string());
                 }
 
-                Ok((EMULATOR_PATH.to_string(), args, command_file.to_string(), output_path))
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
             }
         }
     }
@@ -412,11 +455,19 @@ impl EmulatorJobType {
     pub fn checkpoint_input(&self) -> Result<Option<String>, DispatcherError> {
         match self {
             EmulatorJobType::ProverExecute(_, _, base, _, _) => Ok(Some(base.clone())),
-            EmulatorJobType::VerifierCheckExecution(_, _, base, _, _, _, _, _) => Ok(Some(base.clone())),
-            EmulatorJobType::ProverGetHashesForRound(_, base, _, _, _, _, _) => Ok(Some(base.clone())),
-            EmulatorJobType::VerifierChooseSegment(_, base, _, _, _, _, _) => Ok(Some(base.clone())),
+            EmulatorJobType::VerifierCheckExecution(_, _, base, _, _, _, _, _) => {
+                Ok(Some(base.clone()))
+            }
+            EmulatorJobType::ProverGetHashesForRound(_, base, _, _, _, _, _) => {
+                Ok(Some(base.clone()))
+            }
+            EmulatorJobType::VerifierChooseSegment(_, base, _, _, _, _, _) => {
+                Ok(Some(base.clone()))
+            }
             EmulatorJobType::ProverFinalTrace(_, base, _, _, _) => Ok(Some(base.clone())),
-            EmulatorJobType::VerifierChooseChallenge(_, base, _, _, _, _, _, _) => Ok(Some(base.clone())),
+            EmulatorJobType::VerifierChooseChallenge(_, base, _, _, _, _, _, _) => {
+                Ok(Some(base.clone()))
+            }
             EmulatorJobType::VerifierChooseChallengeForReadChallenge(_, base, _, _, _, _, _) => {
                 Ok(Some(base.clone()))
             }
@@ -439,7 +490,7 @@ impl EmulatorJobType {
             }
             fs::remove_dir_all(temp_checkpoint_path)?;
         }
-        
+
         Ok(())
     }
 }
