@@ -86,12 +86,13 @@ pub fn config_broker(
     let allow_list = AllowList::new();
     allow_list.lock().unwrap().set_allow_all(true);
 
-    let config = BrokerConfig::new(
-        PORT,
-        Some(IpAddr::from(ip)),
-        cert.get_pubk_hash().unwrap(),
-        None,
-    );
+    // Expected broker public key hash.
+    let broker_pubk_hash = Cert::new_with_privk(&fs::read_to_string(&paths.privk).unwrap())
+        .unwrap()
+        .get_pubk_hash()
+        .unwrap();
+
+    let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), broker_pubk_hash, None);
 
     let channel = match rt {
         Some(rt) => {
