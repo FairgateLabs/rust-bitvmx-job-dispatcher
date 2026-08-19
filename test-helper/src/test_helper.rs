@@ -60,7 +60,7 @@ pub fn init_server(port: u16) -> Result<BrokerServer, anyhow::Error> {
     let routing = RoutingTable::new();
     routing.lock().unwrap().allow_all();
 
-    let config = BrokerConfig::new(port, None, cert.get_pubk_hash().unwrap(), None);
+    let config = BrokerConfig::new(port, None, None);
 
     // The server opens its own storage from this path, so start each run from a clean one.
     let storage_path = format!("temp-runs/broker_server_{}.db", port);
@@ -86,18 +86,27 @@ pub fn config_broker(
     let allow_list = AllowList::new();
     allow_list.lock().unwrap().set_allow_all(true);
 
-    let config = BrokerConfig::new(
-        PORT,
-        Some(IpAddr::from(ip)),
-        cert.get_pubk_hash().unwrap(),
-        None,
-    );
+    let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), None);
+
+    // The broker listening on PORT runs on the services key, so that is the identity to expect there.
+    let broker_pubk_hash = Cert::new_with_privk(&fs::read_to_string(&paths.privk).unwrap())
+        .unwrap()
+        .get_pubk_hash()
+        .unwrap();
 
     let channel = match rt {
-        Some(rt) => {
-            RemoteChannel::new_with_runtime(&config, cert, Some(my_id), allow_list, rt).unwrap()
+        Some(rt) => RemoteChannel::new_with_runtime(
+            &config,
+            cert,
+            Some(my_id),
+            allow_list,
+            broker_pubk_hash,
+            rt,
+        )
+        .unwrap(),
+        None => {
+            RemoteChannel::new(&config, cert, Some(my_id), allow_list, broker_pubk_hash).unwrap()
         }
-        None => RemoteChannel::new(&config, cert, Some(my_id), allow_list).unwrap(),
     };
 
     let check_interval = Duration::from_secs(1);
@@ -166,16 +175,13 @@ pub fn configure_example_broker(
     let allow_list = AllowList::new();
     allow_list.lock().unwrap().set_allow_all(true);
 
+    let broker_pubk_hash = cert.get_pubk_hash()?;
     let channel = RemoteChannel::new(
-        &BrokerConfig::new(
-            port,
-            Some(IpAddr::from([127, 0, 0, 1])),
-            cert.get_pubk_hash()?,
-            None,
-        ),
+        &BrokerConfig::new(port, Some(IpAddr::from([127, 0, 0, 1])), None),
         cert,
         Some(my_id),
         allow_list,
+        broker_pubk_hash,
     )?;
 
     let privk = fs::read_to_string(paths.job_dispatcher_key.clone())?;
