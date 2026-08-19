@@ -1,6 +1,6 @@
 [package]
 name = "bitvmx-garbled-dispatcher"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2021"
 
 [dependencies]
@@ -11,7 +11,7 @@ ctrlc = "3.2.0"
 anyhow = "1.0.95"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.11"
-bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.8.1" }
+bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.8.2" }
 hex = "0.4"
 bitvmx-job-dispatcher-types = { path = "../jobtypes", features = ["garbled"] }
 bitvmx-job-dispatcher = { path = "../dispatcher" }
