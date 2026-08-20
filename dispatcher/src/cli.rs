@@ -107,10 +107,15 @@ pub fn init() -> Result<
     let config: BrokerConfig = BrokerConfig::new(
         args.port,
         Some(IpAddr::from(ip)),
-        args.broker_pubk_hash,
         None, // Default config
     );
-    let channel = RemoteChannel::new(&config, cert, Some(my_id), allow_list)?;
+    let channel = RemoteChannel::new(
+        &config,
+        cert,
+        Some(my_id),
+        allow_list,
+        args.broker_pubk_hash,
+    )?;
     let check_interval = std::time::Duration::from_secs(1);
 
     let running = Arc::new(AtomicBool::new(true));
