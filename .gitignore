@@ -1,5 +1,4 @@
 /target
-Cargo.lock
 output.json
 snark-seal.json
 stark-proof.bin

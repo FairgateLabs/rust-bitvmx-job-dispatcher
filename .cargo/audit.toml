@@ -1,0 +1,54 @@
+# Temporary exceptions for vulnerabilities introduced through transitive
+# dependencies of the AWS Rust SDK / AWS Smithy dependency stack.
+#
+# These crates are not direct dependencies of this project and cannot be
+# upgraded independently without moving the AWS dependency graph to versions
+# that support the fixed releases.
+#
+# Remove these exceptions as soon as the AWS SDK updates its transitive
+# dependencies to compatible, non-vulnerable versions.
+
+[advisories]
+ignore = [
+    # h2 0.3.27
+    #
+    # RUSTSEC-2026-0258: unbounded empty DATA frames.
+    # Fixed only in h2 >= 0.4.16. The vulnerable h2 0.3.x instance is pulled
+    # transitively through the AWS/Smithy legacy HTTP dependency stack and
+    # cannot be upgraded to 0.4.x independently because this is an incompatible
+    # dependency version.
+    #
+    # TODO: Remove when the AWS SDK/Smithy dependency chain no longer requires
+    # h2 0.3.x.
+    "RUSTSEC-2026-0258",
+
+    # rsa 0.9.10
+    #
+    # RUSTSEC-2023-0071: Marvin Attack timing side-channel.
+    # There is currently no fixed release available according to RustSec.
+    # This crate is present as a transitive dependency rather than being
+    # directly selected by this project.
+    #
+    # TODO: Re-evaluate when a fixed rsa release is available and the upstream
+    # dependency chain adopts it.
+    "RUSTSEC-2023-0071",
+
+    # rustls-webpki 0.101.7
+    #
+    # The vulnerable rustls-webpki 0.101.x instance is pulled transitively
+    # through the AWS/Smithy TLS dependency stack. The fixes are available only
+    # in rustls-webpki 0.103.x+, which cannot be substituted directly for
+    # 0.101.x because the upstream rustls dependency requires that API version.
+    #
+    # TODO: Remove these exceptions when AWS/Smithy migrates the corresponding
+    # TLS stack to a rustls version using rustls-webpki >= 0.103.13.
+
+    # URI name constraints incorrectly accepted.
+    "RUSTSEC-2026-0098",
+
+    # Name constraints incorrectly accepted for wildcard certificates.
+    "RUSTSEC-2026-0099",
+
+    # Reachable panic while parsing certificate revocation lists.
+    "RUSTSEC-2026-0104",
+]
