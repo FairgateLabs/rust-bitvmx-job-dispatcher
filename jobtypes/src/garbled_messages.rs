@@ -221,6 +221,8 @@ pub struct GCJobVerifyResult {
     digest_circ_matches: bool,
     digest_ct_matches: bool,
     digest_lamport_matches: bool,
+    valid_indices: bool,
+    valid_num_inputs: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
