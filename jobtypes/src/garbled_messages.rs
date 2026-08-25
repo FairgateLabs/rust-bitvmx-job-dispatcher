@@ -206,7 +206,7 @@ pub struct ProofBlob {
 }
 
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct GCJobVerifyResult {
     status: String,
     r#type: String,
