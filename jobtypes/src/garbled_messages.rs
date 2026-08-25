@@ -145,7 +145,6 @@ pub enum GarbledJobType {
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 /// Garbled gate in hex format for JSON serialization
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
 pub enum GarbledGateHex {
     And { ct: String },
     Noop,
@@ -183,6 +182,8 @@ pub struct GCJobProveResult {
     pub lamport_proof_path: String,
     /// Path to input labels
     pub io_inputs_path: String,
+    /// Path to gates and lamport commitments
+    pub commitments_path: String,
     /// GC proof digests
     pub digest_circ: String,
     pub digest_ct: String,
@@ -190,11 +191,6 @@ pub struct GCJobProveResult {
     /// Lamport proof digests
     pub digest_labels: String,
     pub digest_lamport: String,
-    /// Public garbling data (ct values only, no secrets)
-    pub garbling_public: GarblingPublicHex,
-    /// SHA256 commitments to wire labels (public Lamport commitments)
-    pub sha256_commitments: Vec<Sha256CommitmentHex>,
-    pub input_commitment_indices: Vec<usize>,
 }
 
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
@@ -234,4 +230,15 @@ pub struct GCJobVerifyResult {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GCJobEvaluationResult {
     pub output: Vec<Vec<u8>>,
+}
+
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
+/// Garbled circuit AND gate commitments, lamport commitments, and indices
+#[derive(Serialize, Deserialize)]
+pub struct GCCommitmentsFile {
+    /// Public garbling data (ct values only, no secrets)
+    pub garbling_public: GarblingPublicHex,
+    /// SHA256 commitments to wire labels (public Lamport commitments)
+    pub sha256_commitments: Vec<Sha256CommitmentHex>,
+    pub input_commitment_indices: Vec<usize>,
 }
