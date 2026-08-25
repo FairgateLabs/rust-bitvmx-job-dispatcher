@@ -142,7 +142,7 @@ pub enum GarbledJobType {
     Evaluate(String, GCJobProveResult, Vec<([u8; 32], u8)>, String),
 }
 
-// temporally here until gc repo is public
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 /// Garbled gate in hex format for JSON serialization
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -151,6 +151,7 @@ pub enum GarbledGateHex {
     Noop,
 }
 
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 /// Public garbling data for verifier (ct values only - no secrets)
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GarblingPublicHex {
@@ -158,6 +159,7 @@ pub struct GarblingPublicHex {
     gates: Vec<GarbledGateHex>,
 }
 
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 /// SHA256 commitment pair in hex format
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Sha256CommitmentHex {
@@ -167,6 +169,7 @@ pub struct Sha256CommitmentHex {
     pub h1: String,
 }
 
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GCJobProveResult {
     pub status: String,
@@ -194,6 +197,7 @@ pub struct GCJobProveResult {
     pub input_commitment_indices: Vec<usize>,
 }
 
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProofBlob {
     pub prove_result: GCJobProveResult,
@@ -201,6 +205,7 @@ pub struct ProofBlob {
     pub lamport_proof: Vec<u8>,
 }
 
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 #[derive(Debug, Serialize)]
 pub struct GCJobVerifyResult {
     status: String,
@@ -225,6 +230,7 @@ pub struct GCJobVerifyResult {
     valid_num_inputs: bool,
 }
 
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GCJobEvaluationResult {
     pub output: Vec<Vec<u8>>,
