@@ -156,7 +156,7 @@ pub enum GarbledGateHex {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GarblingPublicHex {
     /// Garbled gates (ct values for AND gates, Noop for XOR/INV)
-    gates: Vec<GarbledGateHex>,
+    pub gates: Vec<GarbledGateHex>,
 }
 
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
@@ -208,26 +208,26 @@ pub struct ProofBlob {
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GCJobVerifyResult {
-    status: String,
-    r#type: String,
+    pub status: String,
+    pub r#type: String,
     /// All verifications passed (proofs valid + all digests match)
-    valid: bool,
+    pub valid: bool,
     /// GC proof digests (from proof)
-    digest_circ: String,
-    digest_ct: String,
-    digest_io: String,
+    pub digest_circ: String,
+    pub digest_ct: String,
+    pub digest_io: String,
     /// Lamport proof digests (from proof)
-    digest_labels: String,
-    digest_lamport: String,
+    pub digest_labels: String,
+    pub digest_lamport: String,
     /// Individual verification results
-    gc_proof_valid: bool,
-    lamport_proof_valid: bool,
-    proofs_linked: bool,
-    digest_circ_matches: bool,
-    digest_ct_matches: bool,
-    digest_lamport_matches: bool,
-    valid_indices: bool,
-    valid_num_inputs: bool,
+    pub gc_proof_valid: bool,
+    pub lamport_proof_valid: bool,
+    pub proofs_linked: bool,
+    pub digest_circ_matches: bool,
+    pub digest_ct_matches: bool,
+    pub digest_lamport_matches: bool,
+    pub valid_indices: bool,
+    pub valid_num_inputs: bool,
 }
 
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
