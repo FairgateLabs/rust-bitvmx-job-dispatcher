@@ -10,4 +10,4 @@ bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git"
 bitvmx-job-dispatcher = { path = "../dispatcher" }
 rust-bitvmx-storage-backend = { git = "https://github.com/FairgateLabs/rust-bitvmx-storage-backend.git", tag = "v0.8.2" }
 tokio = { version = "1", features = ["full"] }
-anyhow = "1.0.95"
+anyhow = "1.0.104"
