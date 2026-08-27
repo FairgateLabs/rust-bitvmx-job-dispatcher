@@ -22,5 +22,5 @@ thiserror = "2.0.11"
 bitvmx-settings = { git = "https://github.com/FairgateLabs/rust-bitvmx-settings.git", tag = "v0.8.2" }
 
 [dev-dependencies]
-rand = "0.9.1"
+rand = "0.10.2"
 test-helper = { path = "../test-helper" }
