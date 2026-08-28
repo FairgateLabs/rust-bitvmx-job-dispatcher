@@ -2,6 +2,7 @@ mod prover {
 
     use bitvmx_job_dispatcher::dispatcher_job::{DispatcherJob, ResultMessage};
     use bitvmx_job_dispatcher_types::prover_messages::ProverJobType;
+    use std::str::FromStr;
     use test_helper::test_helper::{configure_example_broker, wait_for_result, Paths};
     use zk_result::ResultType as ProverResultType;
 

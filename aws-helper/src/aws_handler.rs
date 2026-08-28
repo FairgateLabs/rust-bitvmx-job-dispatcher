@@ -156,7 +156,7 @@ impl AwsHandler {
         let data = self
             .runtime
             .block_on(get_response.body.collect())
-            .map_err(|e| AwsDispatcherError::ByteStreamError(e.into()))?
+            .map_err(AwsDispatcherError::ByteStreamError)?
             .into_bytes()
             .to_vec();
 
@@ -286,7 +286,7 @@ impl AwsHandler {
             return Ok(None);
         }
 
-        let instance_status = describe_response.instance_statuses.as_ref().unwrap().get(0);
+        let instance_status = describe_response.instance_statuses.as_ref().unwrap().first();
 
         let state = instance_status
             .and_then(|s| s.instance_state())
@@ -313,14 +313,13 @@ impl AwsHandler {
     pub fn is_instance_ready(&self, instance_id: &str) -> Result<bool, AwsDispatcherError> {
         let status = self.get_instance_status(instance_id)?;
         info!("Instance status for {}: {:?}", instance_id, status);
-        if let Some(status) = status {
-            if status.state == InstanceStateName::Running
+        if let Some(status) = status
+            && status.state == InstanceStateName::Running
                 && status.system_status == SummaryStatus::Ok
                 && status.instance_status == SummaryStatus::Ok
             {
                 return Ok(true);
             }
-        }
         Ok(false)
     }
 

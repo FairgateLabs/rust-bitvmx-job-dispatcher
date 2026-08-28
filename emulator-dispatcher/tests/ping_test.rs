@@ -19,8 +19,8 @@ fn test_dispatcher_ping() -> Result<(), anyhow::Error> {
 
     run_ping_flow(
         storage_path,
-        |running, storage, paths| start_emulator(running, storage, paths),
-        |port| start_ping(port),
+        start_emulator,
+        start_ping,
         path,
     )
 }

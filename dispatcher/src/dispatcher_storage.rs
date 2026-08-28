@@ -5,6 +5,8 @@ use storage_backend::storage::{KeyValueStore, Storage};
 
 use crate::dispatcher_error::DispatcherError;
 
+pub type JobResult = (String, (String, Identifier)); // (job_id, (result, identifier))
+
 /// Persists and restores jobs from Storage.
 pub struct DispatcherStorage {
     pub(crate) storage: Rc<Storage>,
@@ -79,7 +81,7 @@ impl DispatcherStorage {
         let written = self
             .storage
             .set(&key, result, Some(tx))
-            .and_then(|_| self.storage.remove(&job_key(job_id), Some(tx)));
+            .and_then(|_| self.storage.remove(job_key(job_id), Some(tx)));
 
         match written {
             Ok(()) => Ok(self.storage.commit_transaction(tx)?),
@@ -90,7 +92,7 @@ impl DispatcherStorage {
         }
     }
 
-    pub fn get_results(&self) -> Result<Vec<(String, (String, Identifier))>, DispatcherError> {
+    pub fn get_results(&self) -> Result<Vec<JobResult>, DispatcherError> {
         let mut results = Vec::new();
         let keys = self.storage.partial_compare_keys("result_", None)?;
 
