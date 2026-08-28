@@ -17,12 +17,7 @@ fn test_dispatcher_ping() -> Result<(), anyhow::Error> {
     let storage_path = get_storage_path();
     let path = Paths::new("", test_helper::test_helper::JobType::Emulator);
 
-    run_ping_flow(
-        storage_path,
-        start_emulator,
-        start_ping,
-        path,
-    )
+    run_ping_flow(storage_path, start_emulator, start_ping, path)
 }
 
 fn start_ping(port: u16) -> thread::JoinHandle<Result<(), anyhow::Error>> {

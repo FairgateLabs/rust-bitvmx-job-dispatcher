@@ -286,7 +286,11 @@ impl AwsHandler {
             return Ok(None);
         }
 
-        let instance_status = describe_response.instance_statuses.as_ref().unwrap().first();
+        let instance_status = describe_response
+            .instance_statuses
+            .as_ref()
+            .unwrap()
+            .first();
 
         let state = instance_status
             .and_then(|s| s.instance_state())
@@ -315,11 +319,11 @@ impl AwsHandler {
         info!("Instance status for {}: {:?}", instance_id, status);
         if let Some(status) = status
             && status.state == InstanceStateName::Running
-                && status.system_status == SummaryStatus::Ok
-                && status.instance_status == SummaryStatus::Ok
-            {
-                return Ok(true);
-            }
+            && status.system_status == SummaryStatus::Ok
+            && status.instance_status == SummaryStatus::Ok
+        {
+            return Ok(true);
+        }
         Ok(false)
     }
 
