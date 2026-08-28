@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 
 serde = { version = "1.0.229", features = ["derive"] }
-bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", optional = true, tag = "v0.8.2" }
-emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.8.2" }
+bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", optional = true, tag = "v0.8.3" }
+emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.8.3" }
 serde_json = "1.0.151"
 thiserror = "2.0.20"
 hex = "0.4"

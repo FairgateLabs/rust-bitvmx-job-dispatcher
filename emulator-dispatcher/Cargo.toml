@@ -13,9 +13,9 @@ serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.20"
 
 bitvmx-broker = { git = "https://github.com/FairgateLabs/rust-bitvmx-broker.git", tag = "v0.8.2" }
-bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.8.2" }
+bitvmx-cpu-definitions = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.8.3" }
 bitvmx-job-dispatcher-types = { path = "../jobtypes", features = ["emulator"] }
-emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.8.2" }
+emulator = { git = "https://github.com/FairgateLabs/BitVMX-CPU.git", tag = "v0.8.3" }
 bitvmx-job-dispatcher = { path = "../dispatcher" }
 hex = "0.4"
 clap = { version = "4.6.6", features = ["derive"] }
