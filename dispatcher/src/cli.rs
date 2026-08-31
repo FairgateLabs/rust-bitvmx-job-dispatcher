@@ -74,17 +74,16 @@ fn init_trace() -> Result<(), DispatcherError> {
     Ok(())
 }
 
-pub fn init() -> Result<
-    (
-        RemoteChannel,
-        Duration,
-        Arc<AtomicBool>,
-        Rc<Storage>,
-        Option<String>,
-        bool,
-    ),
-    DispatcherError,
-> {
+pub type InitContext = (
+    RemoteChannel,
+    Duration,
+    Arc<AtomicBool>,
+    Rc<Storage>,
+    Option<String>,
+    bool,
+);
+
+pub fn init() -> Result<InitContext, DispatcherError> {
     init_trace()?;
     let args = Command::parse();
 

@@ -15,7 +15,7 @@ fn test_emulator_dispatcher() -> Result<(), anyhow::Error> {
     let storage_path = get_storage_path();
     run_flow(
         storage_path,
-        |running, storage, paths| start_emulator(running, storage, paths),
+        start_emulator,
         |port| start_challenge(port).unwrap(),
         path,
     )

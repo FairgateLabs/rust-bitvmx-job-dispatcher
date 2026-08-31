@@ -148,7 +148,7 @@ where
             let uid = msg.uid;
             let msg = Msg::from_msg((msg.msg, msg.from));
 
-            if let Some(message) = serde_json::from_str::<PingMessage>(&msg.raw).ok() {
+            if let Ok(message) = serde_json::from_str::<PingMessage>(&msg.raw) {
                 match message {
                     PingMessage::Ping => debug!("Received Ping"),
                     PingMessage::Pong => {
@@ -175,10 +175,10 @@ where
                     }
                 };
 
-                if self.storage.contains_job(&job.job_id())? {
+                if self.storage.contains_job(job.job_id())? {
                     warn!("Job with id {} already exists, skipping", job.job_id());
                 } else {
-                    self.storage.persist_job(&job.job_id(), &msg.to_string())?;
+                    self.storage.persist_job(job.job_id(), &msg.to_string())?;
                     if self.local_mode {
                         let (child, context) = spawn_local_job(&job)?;
                         self.workers.push((child, msg.id.clone(), context));

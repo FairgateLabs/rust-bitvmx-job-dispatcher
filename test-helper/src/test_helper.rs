@@ -86,7 +86,7 @@ pub fn config_broker(
     let allow_list = AllowList::new();
     allow_list.lock().unwrap().set_allow_all(true);
 
-    let config = BrokerConfig::new(PORT, Some(IpAddr::from(ip)), None);
+    let config = BrokerConfig::new(PORT, Some(ip), None);
 
     // The broker listening on PORT runs on the services key, so that is the identity to expect there.
     let broker_pubk_hash = Cert::new_with_privk(&fs::read_to_string(&paths.privk).unwrap())
@@ -111,7 +111,7 @@ pub fn config_broker(
 
     let check_interval = Duration::from_secs(1);
 
-    let storage = get_storage_with_path(&storage_path).unwrap();
+    let storage = get_storage_with_path(storage_path).unwrap();
 
     (channel, check_interval, storage)
 }

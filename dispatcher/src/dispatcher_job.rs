@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage};
@@ -42,10 +44,15 @@ impl ResultMessage {
         Ok(serde_json::to_string(self)?)
     }
 
-    pub fn from_str(msg: &str) -> Result<Self, DispatcherError> {
-        Ok(serde_json::from_str(msg)?)
-    }
     pub fn result_as_value(&self) -> Result<serde_json::Value, DispatcherError> {
         Ok(serde_json::from_str(&self.result)?)
+    }
+}
+
+impl FromStr for ResultMessage {
+    type Err = DispatcherError;
+
+    fn from_str(msg: &str) -> Result<Self, Self::Err> {
+        Ok(serde_json::from_str(msg)?)
     }
 }
