@@ -206,7 +206,7 @@ impl DispatcherAws {
                             .complete_job(&instance.job_id, (rm.to_string()?, id))?;
 
                         self.handler.terminate_instance(&instance.instance_id)?;
-                        self.handler.delete_file(&result_file)?;
+                        self.handler.delete_file(result_file)?;
 
                         for (_data, keyname, _fname) in job.job_type().prepare_remote_input()? {
                             let remote_key = format!("{}/{}", instance.job_id, keyname);
@@ -311,8 +311,8 @@ impl DispatcherAwsStorage {
     pub fn get_instances(&self) -> Result<Vec<String>, DispatcherError> {
         Ok(self
             .db()
-            .get(&instances_key(), None)?
-            .unwrap_or_else(|| vec![]))
+            .get(instances_key(), None)?
+            .unwrap_or_else(std::vec::Vec::new))
     }
 
     pub fn get_all_instances(&self) -> Result<Vec<InstanceInfo>, DispatcherError> {
@@ -331,24 +331,24 @@ impl DispatcherAwsStorage {
         instance_id: &str,
         status: &InstanceInfo,
     ) -> Result<(), DispatcherError> {
-        self.db().set(&instance_key(instance_id), status, None)?;
+        self.db().set(instance_key(instance_id), status, None)?;
         let mut instances = self.get_instances()?;
         if !instances.contains(&instance_id.to_string()) {
             instances.push(instance_id.to_string());
-            self.db().set(&instances_key(), instances, None)?;
+            self.db().set(instances_key(), instances, None)?;
         }
         Ok(())
     }
 
     pub fn get_instance(&self, instance_id: &str) -> Result<Option<InstanceInfo>, DispatcherError> {
-        Ok(self.db().get(&instance_key(instance_id), None)?)
+        Ok(self.db().get(instance_key(instance_id), None)?)
     }
 
     pub fn remove_instance(&self, instance_id: &str) -> Result<(), DispatcherError> {
-        self.db().remove(&instance_key(instance_id), None)?;
+        self.db().remove(instance_key(instance_id), None)?;
         let mut instances = self.get_instances()?;
         instances.retain(|id| id != instance_id);
-        self.db().set(&instances_key(), instances, None)?;
+        self.db().set(instances_key(), instances, None)?;
         Ok(())
     }
 }
