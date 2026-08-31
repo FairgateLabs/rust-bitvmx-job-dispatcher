@@ -45,8 +45,15 @@ pub enum DispatcherError {
 
     #[cfg(feature = "aws")]
     #[error("Aws Dispatcher error {0}")]
-    AwsDispatcherError(#[from] bitvmx_aws_helper::errors::AwsDispatcherError),
+    AwsDispatcherError(Box<bitvmx_aws_helper::errors::AwsDispatcherError>),
 
     #[error("String conversion error {0}")]
     StringConversionError(#[from] std::string::FromUtf8Error),
+}
+
+#[cfg(feature = "aws")]
+impl From<bitvmx_aws_helper::errors::AwsDispatcherError> for DispatcherError {
+    fn from(err: bitvmx_aws_helper::errors::AwsDispatcherError) -> Self {
+        DispatcherError::AwsDispatcherError(Box::new(err))
+    }
 }
