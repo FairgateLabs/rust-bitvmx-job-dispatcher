@@ -1,6 +1,6 @@
 [package]
 name = "bitvmx-aws-helper"
-version = "0.8.2"
+version = "0.8.4"
 edition = "2024"
 
 [dependencies]
@@ -19,8 +19,8 @@ tracing = "0.1.26"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0.95"
 thiserror = "2.0.11"
-bitvmx-settings = { git = "https://github.com/FairgateLabs/rust-bitvmx-settings.git", tag = "v0.8.2" }
+bitvmx-settings = { git = "https://github.com/FairgateLabs/rust-bitvmx-settings.git", tag = "v0.8.4" }
 
 [dev-dependencies]
-rand = "0.9.1"
+rand = "0.10.2"
 test-helper = { path = "../test-helper" }

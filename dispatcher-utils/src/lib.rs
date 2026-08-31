@@ -51,10 +51,6 @@ impl FromStr for Msg {
 }
 
 impl Msg {
-    pub fn to_string(&self) -> String {
-        format!("{}", self)
-    }
-
     pub fn from_string(s: &str) -> Result<Self, UtilsError> {
         s.parse().map_err(|_| UtilsError::ParseError)
     }
