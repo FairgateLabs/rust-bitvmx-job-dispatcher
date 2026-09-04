@@ -64,6 +64,9 @@ impl DispatcherMessage for GarbledJobType {
                 let lamport_proof = format!("{output_file_path}/lamport_proof.bin");
                 std::fs::write(&lamport_proof, &proof_blob.lamport_proof)?;
 
+                let commitments = format!("{output_file_path}/commitments.bin");
+                std::fs::write(&commitments, &proof_blob.commitments)?;
+
                 let cmd = Self::gnova_bin();
                 let args = vec![
                     "verify".to_string(),
@@ -75,17 +78,14 @@ impl DispatcherMessage for GarbledJobType {
                     lamport_proof.clone(),
                     "--public-data".to_string(),
                     public_data.clone(),
+                    "--commitments".to_string(),
+                    commitments.clone(),
                     "--json".to_string(),
                     json.clone(),
                 ];
                 Ok((cmd, args, json, "".to_string()))
             }
-            GarbledJobType::Evaluate(
-                circuit_path,
-                prove_result,
-                input_labels,
-                output_file_path,
-            ) => {
+            GarbledJobType::Evaluate(circuit_path, commitments, input_labels, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
                 let json = format!("{output_file_path}/output.json");
                 let input_labels_file = format!("{output_file_path}/input_labels.bin");
@@ -96,16 +96,16 @@ impl DispatcherMessage for GarbledJobType {
                 }
                 std::fs::write(&input_labels_file, input_labels_bytes)?;
 
-                let public_data = format!("{output_file_path}/public_data.json");
-                std::fs::write(&public_data, &serde_json::to_vec(&prove_result)?)?;
+                let commitments_path = format!("{output_file_path}/commitments.bin");
+                std::fs::write(&commitments_path, commitments)?;
 
                 let cmd = Self::gnova_bin();
                 let args = vec![
                     "evaluate".to_string(),
                     "--circuit".to_string(),
                     circuit_path.clone(),
-                    "--public-data".to_string(),
-                    public_data.clone(),
+                    "--commitments".to_string(),
+                    commitments_path.clone(),
                     "--input-labels".to_string(),
                     input_labels_file,
                     "--json".to_string(),
@@ -139,13 +139,12 @@ pub enum GarbledJobType {
     Verify(ProofBlob, String, String),
     /// Evaluate(circuit_file_path, public_data, input_labels, output_dir)
     /// Evaluates a circuit with given input labels.
-    Evaluate(String, GCJobProveResult, Vec<([u8; 32], u8)>, String),
+    Evaluate(String, Vec<u8>, Vec<([u8; 32], u8)>, String),
 }
 
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
 /// Garbled gate in hex format for JSON serialization
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
 pub enum GarbledGateHex {
     And { ct: String },
     Noop,
@@ -183,6 +182,8 @@ pub struct GCJobProveResult {
     pub lamport_proof_path: String,
     /// Path to input labels
     pub io_inputs_path: String,
+    /// Path to gates and lamport commitments
+    pub commitments_path: String,
     /// GC proof digests
     pub digest_circ: String,
     pub digest_ct: String,
@@ -190,11 +191,6 @@ pub struct GCJobProveResult {
     /// Lamport proof digests
     pub digest_labels: String,
     pub digest_lamport: String,
-    /// Public garbling data (ct values only, no secrets)
-    pub garbling_public: GarblingPublicHex,
-    /// SHA256 commitments to wire labels (public Lamport commitments)
-    pub sha256_commitments: Vec<Sha256CommitmentHex>,
-    pub input_commitment_indices: Vec<usize>,
 }
 
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
@@ -203,6 +199,7 @@ pub struct ProofBlob {
     pub prove_result: GCJobProveResult,
     pub gc_proof: Vec<u8>,
     pub lamport_proof: Vec<u8>,
+    pub commitments: Vec<u8>,
 }
 
 // This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
@@ -234,4 +231,15 @@ pub struct GCJobVerifyResult {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GCJobEvaluationResult {
     pub output: Vec<Vec<u8>>,
+}
+
+// This struct is copied from the rust-bitvmx-gc repo, it will be here until that repo becomes public
+/// Garbled circuit AND gate commitments, lamport commitments, and indices
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GCCommitmentsFile {
+    /// Public garbling data (ct values only, no secrets)
+    pub garbling_public: GarblingPublicHex,
+    /// SHA256 commitments to wire labels (public Lamport commitments)
+    pub sha256_commitments: Vec<Sha256CommitmentHex>,
+    pub input_commitment_indices: Vec<usize>,
 }

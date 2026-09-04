@@ -74,10 +74,14 @@ fn run_garbled_job(port: u16) -> Result<()> {
     let gc_proof = std::fs::read(gc_proof_path)?;
     let lamport_proof = std::fs::read(lamport_proof_path)?;
 
+    let commitments_path = &prove_parsed.commitments_path;
+    let encoded_commitments = std::fs::read(commitments_path)?;
+
     let proof_blob = ProofBlob {
         prove_result: prove_parsed,
         gc_proof,
         lamport_proof,
+        commitments: encoded_commitments,
     };
 
     // --- Step 2: Send Verify job ---
