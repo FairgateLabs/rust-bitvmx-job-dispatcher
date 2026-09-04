@@ -127,6 +127,7 @@ impl DispatcherMessage for GarbledJobType {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum GarbledJobType {
     /// ImportProof(from_path, to_path)

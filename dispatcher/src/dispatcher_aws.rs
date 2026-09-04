@@ -377,7 +377,7 @@ mod tests {
             )])
         }
 
-        fn command(&self) -> Result<(String, Vec<String>, String), DispatcherError> {
+        fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
             Ok((
                 "sh".to_string(),
                 vec![
@@ -385,6 +385,7 @@ mod tests {
                     format!("echo {{ \\\"type\\\": \\\"echo\\\", \\\"data\\\": {{ \\\"result\\\" : \\\"{}\\\" }} }} >output.json", self.content),
                 ],
                 "output.json".to_string(),
+                String::new(),
             ))
         }
 
@@ -438,8 +439,6 @@ mod tests {
         dispatcher.tick::<EchoMessage>().unwrap();
         drop(dispatcher);
         remove_storage_path(&storage_path);
-
-        assert!(true);
     }
 
     #[test]
