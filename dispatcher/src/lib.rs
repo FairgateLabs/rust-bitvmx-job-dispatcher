@@ -373,18 +373,18 @@ where
     V: DispatcherMessage + DeserializeOwned,
 {
     msg.job_type().prepare_local_input()?;
-    let (cmd, args, command_file, temp_checkpoint_output_path) = msg.job_type.command()?;
-    let cmd = resolve_command_path(&cmd)?;
+    let command = msg.job_type.command()?;
+    let program = resolve_command_path(&command.program)?;
     info!("Job id: {}", msg.job_id());
-    info!("Command: {:?}", cmd);
-    info!("Args: {:?}", args);
+    info!("Command: {:?}", program);
+    info!("Args: {:?}", command.args);
 
     let job_context = JobContext::new(
         msg.job_id.clone(),
-        command_file.clone(),
-        temp_checkpoint_output_path,
+        command.result_file,
+        command.checkpoint_output_path,
     );
-    let child = Command::new(cmd).args(args).spawn()?;
+    let child = Command::new(program).args(command.args).spawn()?;
 
     Ok((child, job_context))
 }

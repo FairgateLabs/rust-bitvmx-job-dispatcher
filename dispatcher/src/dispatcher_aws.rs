@@ -21,6 +21,11 @@ pub struct DispatcherAws {
     pub storage: DispatcherAwsStorage,
 }
 
+// Every value put into one of those lines is shell syntax. Single quoting makes the value a single literal word.
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
 impl DispatcherAws {
     pub fn new(
         config_path: String,
@@ -106,8 +111,9 @@ impl DispatcherAws {
                 let (job, _) = self.get_job::<T>(&instance.job_id)?;
                 let command = job.job_type().command()?;
 
-                let mut full_command = vec![];
-                full_command.push(format!("cd {}", self.handler.running_path()));
+                // Stop at the first line that fails.
+                let mut full_command = vec!["set -e".to_string()];
+                full_command.push(format!("cd {}", shell_quote(self.handler.running_path())));
 
                 for (data, key, fname) in job.job_type().prepare_remote_input()? {
                     let remote_key = format!("{}/{}", instance.job_id, key);
@@ -115,24 +121,35 @@ impl DispatcherAws {
                     self.handler.upload_file(&remote_key, data)?;
 
                     full_command.push(format!(
-                        "aws s3 cp s3://{}/{} {}",
-                        self.handler.bucket_name(),
-                        remote_key,
-                        fname
+                        "aws s3 cp {} {}",
+                        shell_quote(&format!(
+                            "s3://{}/{}",
+                            self.handler.bucket_name(),
+                            remote_key
+                        )),
+                        shell_quote(&fname),
                     ));
                 }
 
-                // command, args
-                full_command.push(command.0.clone());
-                full_command.extend(command.1.clone());
+                // The program and its arguments must be one line, with every word quoted. Pushing them as separate
+                // elements put each on its own script line, so the command never assembled on the instance.
+                let mut program_line = shell_quote(&command.program);
+                for arg in &command.args {
+                    program_line.push(' ');
+                    program_line.push_str(&shell_quote(arg));
+                }
+                full_command.push(program_line);
 
                 // Upload result to s3 after execution
                 full_command.push(format!(
-                    "aws s3 cp {} s3://{}/{}/{}",
-                    command.2,
-                    self.handler.bucket_name(),
-                    instance.job_id,
-                    command.2,
+                    "aws s3 cp {} {}",
+                    shell_quote(&command.result_file),
+                    shell_quote(&format!(
+                        "s3://{}/{}/{}",
+                        self.handler.bucket_name(),
+                        instance.job_id,
+                        command.result_file,
+                    )),
                 ));
 
                 let command_id = self
@@ -184,7 +201,7 @@ impl DispatcherAws {
                         let job_type = job.job_type();
 
                         let result_file =
-                            &format!("{}/{}", instance.job_id, job_type.command().unwrap().2);
+                            &format!("{}/{}", instance.job_id, job_type.command()?.result_file);
 
                         let raw_result = self.handler.download_file(result_file)?;
 
@@ -359,6 +376,7 @@ mod tests {
     use storage_backend::{storage::Storage, storage_config::StorageConfig};
 
     use super::*;
+    use crate::dispatcher_message::JobCommand;
     use crate::helper::{get_storage_path, remove_storage_path};
     use test_helper::test_helper::init_trace;
 
@@ -377,12 +395,15 @@ mod tests {
             )])
         }
 
-        fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
-            Ok((
-                "sh".to_string(),
+        fn command(&self) -> Result<JobCommand, DispatcherError> {
+            Ok(JobCommand::new(
+                "sh",
                 vec![
                     "-c".to_string(),
-                    format!("echo {{ \\\"type\\\": \\\"echo\\\", \\\"data\\\": {{ \\\"result\\\" : \\\"{}\\\" }} }} >output.json", self.content),
+                    "printf '{ \"type\": \"echo\", \"data\": { \"result\": \"%s\" } }' \"$1\" >output.json"
+                        .to_string(),
+                    "echo-job".to_string(),
+                    self.content.clone(),
                 ],
                 "output.json".to_string(),
                 String::new(),
