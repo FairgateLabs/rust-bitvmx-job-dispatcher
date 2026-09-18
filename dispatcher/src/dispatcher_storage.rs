@@ -12,12 +12,17 @@ pub struct DispatcherStorage {
     pub(crate) storage: Rc<Storage>,
 }
 
+/// Storage keys follow the shared `<component>/<entity>/<id>` layout, with `/`
+/// as the only separator and `dispatcher` as this crate's component prefix.
+pub const JOB_PREFIX: &str = "dispatcher/job/";
+pub const RESULT_PREFIX: &str = "dispatcher/result/";
+
 pub fn job_key(job_id: &str) -> String {
-    format!("job_{}", job_id)
+    format!("{JOB_PREFIX}{job_id}")
 }
 
 pub fn result_key(job_id: &str) -> String {
-    format!("result_{}", job_id)
+    format!("{RESULT_PREFIX}{job_id}")
 }
 
 impl DispatcherStorage {
@@ -55,10 +60,10 @@ impl DispatcherStorage {
     }
 
     pub fn list_jobs(&self) -> Result<Vec<String>, DispatcherError> {
-        let keys = self.storage.partial_compare_keys("job_", None)?;
+        let keys = self.storage.partial_compare_keys(JOB_PREFIX, None)?;
         keys.iter()
             .map(|key| {
-                key.strip_prefix("job_")
+                key.strip_prefix(JOB_PREFIX)
                     .map(|s| s.to_string())
                     .ok_or_else(|| DispatcherError::JobIdNotFound(key.clone()))
             })
@@ -94,14 +99,14 @@ impl DispatcherStorage {
 
     pub fn get_results(&self) -> Result<Vec<JobResult>, DispatcherError> {
         let mut results = Vec::new();
-        let keys = self.storage.partial_compare_keys("result_", None)?;
+        let keys = self.storage.partial_compare_keys(RESULT_PREFIX, None)?;
 
         for jobs in keys {
             let result: (String, Identifier) = match self.storage.get(&jobs, None)? {
                 Some(res) => res,
                 None => continue,
             };
-            let job_id = jobs.strip_prefix("result_").unwrap_or(&jobs).to_string();
+            let job_id = jobs.strip_prefix(RESULT_PREFIX).unwrap_or(&jobs).to_string();
 
             results.push((job_id, result));
         }
