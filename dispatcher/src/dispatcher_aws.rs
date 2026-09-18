@@ -4,6 +4,7 @@ use bitvmx_aws_helper::aws_handler::{AwsHandler, CommandStatus};
 use bitvmx_broker::identification::identifier::Identifier;
 use bitvmx_dispatcher_utils::Msg;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use storage_backend::key::StorageKey;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
 
@@ -266,12 +267,12 @@ pub struct DispatcherAwsStorage {
     storage: Rc<DispatcherStorage>,
 }
 
-fn instance_key(instance_id: &str) -> String {
-    format!("instance_{}", instance_id)
+fn instance_key(instance_id: &str) -> StorageKey {
+    StorageKey::from(format!("instance_{}", instance_id))
 }
 
-fn instances_key() -> String {
-    "instances".to_string()
+fn instances_key() -> StorageKey {
+    StorageKey::from("instances")
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -382,7 +383,10 @@ mod tests {
                 "sh".to_string(),
                 vec![
                     "-c".to_string(),
-                    format!("echo {{ \\\"type\\\": \\\"echo\\\", \\\"data\\\": {{ \\\"result\\\" : \\\"{}\\\" }} }} >output.json", self.content),
+                    format!(
+                        "echo {{ \\\"type\\\": \\\"echo\\\", \\\"data\\\": {{ \\\"result\\\" : \\\"{}\\\" }} }} >output.json",
+                        self.content
+                    ),
                 ],
                 "output.json".to_string(),
                 String::new(),

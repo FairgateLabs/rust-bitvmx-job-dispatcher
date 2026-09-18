@@ -1,7 +1,10 @@
 use std::rc::Rc;
 
 use bitvmx_broker::identification::identifier::Identifier;
-use storage_backend::storage::{KeyValueStore, Storage};
+use storage_backend::{
+    key::StorageKey,
+    storage::{KeyValueStore, Storage},
+};
 
 use crate::dispatcher_error::DispatcherError;
 
@@ -12,17 +15,21 @@ pub struct DispatcherStorage {
     pub(crate) storage: Rc<Storage>,
 }
 
-/// Storage keys follow the shared `<component>/<entity>/<id>` layout, with `/`
-/// as the only separator and `dispatcher` as this crate's component prefix.
-pub const JOB_PREFIX: &str = "dispatcher/job/";
-pub const RESULT_PREFIX: &str = "dispatcher/result/";
-
-pub fn job_key(job_id: &str) -> String {
-    format!("{JOB_PREFIX}{job_id}")
+fn dispatcher_key<'a>(namespace: &[&str], tail: impl IntoIterator<Item = &'a str>) -> StorageKey {
+    StorageKey::new(
+        std::iter::once("dispatcher")
+            .chain(namespace.iter().copied())
+            .map(str::to_string)
+            .chain(tail.into_iter().map(str::to_string)),
+    )
 }
 
-pub fn result_key(job_id: &str) -> String {
-    format!("{RESULT_PREFIX}{job_id}")
+fn job_key(job_id: &str) -> StorageKey {
+    dispatcher_key(&["job"], [job_id])
+}
+
+fn result_key(job_id: &str) -> StorageKey {
+    dispatcher_key(&["result"], [job_id])
 }
 
 impl DispatcherStorage {
@@ -31,15 +38,16 @@ impl DispatcherStorage {
     }
 
     pub fn contains_job(&self, job_id: &str) -> Result<bool, DispatcherError> {
-        let key = job_key(job_id);
-        Ok(self.storage.has_key(&key, None)?)
+        Ok(self.storage.has_key(job_key(job_id), None)?)
     }
 
     /// Persists a job to the storage backend. Uses a transaction to ensure that the job is fully persisted.
     pub fn persist_job(&self, job_id: &str, raw_msg: &str) -> Result<(), DispatcherError> {
-        let key = job_key(job_id);
         let tx = self.storage.begin_transaction();
-        match self.storage.set(&key, raw_msg.to_string(), Some(tx)) {
+        match self
+            .storage
+            .set(job_key(job_id), raw_msg.to_string(), Some(tx))
+        {
             Ok(()) => Ok(self.storage.commit_transaction(tx)?),
             Err(e) => {
                 let _ = self.storage.rollback_transaction(tx);
@@ -49,21 +57,20 @@ impl DispatcherStorage {
     }
 
     pub fn get_job(&self, job_id: &str) -> Result<Option<String>, DispatcherError> {
-        let key = job_key(job_id);
-        Ok(self.storage.get(&key, None)?)
+        Ok(self.storage.get(job_key(job_id), None)?)
     }
 
     pub fn remove_job(&self, job_id: &str) -> Result<(), DispatcherError> {
-        let key = job_key(job_id);
-        self.storage.remove(&key, None)?;
+        self.storage.remove(job_key(job_id), None)?;
         Ok(())
     }
 
     pub fn list_jobs(&self) -> Result<Vec<String>, DispatcherError> {
-        let keys = self.storage.partial_compare_keys(JOB_PREFIX, None)?;
+        let prefix = dispatcher_key(&["job"], []).to_scan_prefix();
+        let keys = self.storage.partial_compare_keys(&prefix, None)?;
         keys.iter()
             .map(|key| {
-                key.strip_prefix(JOB_PREFIX)
+                key.strip_prefix(&prefix)
                     .map(|s| s.to_string())
                     .ok_or_else(|| DispatcherError::JobIdNotFound(key.clone()))
             })
@@ -71,8 +78,8 @@ impl DispatcherStorage {
     }
 
     pub fn job_completed(&self, job_id: &str, result: &str) -> Result<(), DispatcherError> {
-        let key = job_key(job_id);
-        self.storage.set(&key, result.to_string(), None)?;
+        self.storage
+            .set(job_key(job_id), result.to_string(), None)?;
         Ok(())
     }
 
@@ -81,11 +88,10 @@ impl DispatcherStorage {
         job_id: &str,
         result: (String, Identifier),
     ) -> Result<(), DispatcherError> {
-        let key = result_key(job_id);
         let tx = self.storage.begin_transaction();
         let written = self
             .storage
-            .set(&key, result, Some(tx))
+            .set(result_key(job_id), result, Some(tx))
             .and_then(|_| self.storage.remove(job_key(job_id), Some(tx)));
 
         match written {
@@ -99,14 +105,16 @@ impl DispatcherStorage {
 
     pub fn get_results(&self) -> Result<Vec<JobResult>, DispatcherError> {
         let mut results = Vec::new();
-        let keys = self.storage.partial_compare_keys(RESULT_PREFIX, None)?;
+        let prefix = dispatcher_key(&["result"], []).to_scan_prefix();
+        let keys = self.storage.partial_compare_keys(&prefix, None)?;
 
         for jobs in keys {
-            let result: (String, Identifier) = match self.storage.get(&jobs, None)? {
-                Some(res) => res,
-                None => continue,
-            };
-            let job_id = jobs.strip_prefix(RESULT_PREFIX).unwrap_or(&jobs).to_string();
+            let result: (String, Identifier) =
+                match self.storage.get(StorageKey::from_joined(&jobs), None)? {
+                    Some(res) => res,
+                    None => continue,
+                };
+            let job_id = jobs.strip_prefix(&prefix).unwrap_or(&jobs).to_string();
 
             results.push((job_id, result));
         }
@@ -115,8 +123,7 @@ impl DispatcherStorage {
     }
 
     pub fn remove_result(&self, job_id: &str) -> Result<(), DispatcherError> {
-        let key = result_key(job_id);
-        self.storage.remove(&key, None)?;
+        self.storage.remove(result_key(job_id), None)?;
         Ok(())
     }
 }
