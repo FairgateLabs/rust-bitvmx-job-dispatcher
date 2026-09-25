@@ -4,6 +4,7 @@ use bitvmx_aws_helper::aws_handler::{AwsHandler, CommandStatus};
 use bitvmx_broker::identification::identifier::Identifier;
 use bitvmx_dispatcher_utils::Msg;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use storage_backend::key::StorageKey;
 use storage_backend::storage::{KeyValueStore, Storage};
 use tracing::{error, info};
 
@@ -266,12 +267,12 @@ pub struct DispatcherAwsStorage {
     storage: Rc<DispatcherStorage>,
 }
 
-fn instance_key(instance_id: &str) -> String {
-    format!("instance_{}", instance_id)
+fn instance_key(instance_id: &str) -> Result<StorageKey, DispatcherError> {
+    Ok(StorageKey::try_from(format!("instance_{}", instance_id))?)
 }
 
-fn instances_key() -> String {
-    "instances".to_string()
+fn instances_key() -> Result<StorageKey, DispatcherError> {
+    Ok(StorageKey::try_from("instances")?)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -311,7 +312,7 @@ impl DispatcherAwsStorage {
     pub fn get_instances(&self) -> Result<Vec<String>, DispatcherError> {
         Ok(self
             .db()
-            .get(instances_key(), None)?
+            .get(instances_key()?, None)?
             .unwrap_or_else(std::vec::Vec::new))
     }
 
@@ -331,24 +332,24 @@ impl DispatcherAwsStorage {
         instance_id: &str,
         status: &InstanceInfo,
     ) -> Result<(), DispatcherError> {
-        self.db().set(instance_key(instance_id), status, None)?;
+        self.db().set(instance_key(instance_id)?, status, None)?;
         let mut instances = self.get_instances()?;
         if !instances.contains(&instance_id.to_string()) {
             instances.push(instance_id.to_string());
-            self.db().set(instances_key(), instances, None)?;
+            self.db().set(instances_key()?, instances, None)?;
         }
         Ok(())
     }
 
     pub fn get_instance(&self, instance_id: &str) -> Result<Option<InstanceInfo>, DispatcherError> {
-        Ok(self.db().get(instance_key(instance_id), None)?)
+        Ok(self.db().get(instance_key(instance_id)?, None)?)
     }
 
     pub fn remove_instance(&self, instance_id: &str) -> Result<(), DispatcherError> {
-        self.db().remove(instance_key(instance_id), None)?;
+        self.db().remove(instance_key(instance_id)?, None)?;
         let mut instances = self.get_instances()?;
         instances.retain(|id| id != instance_id);
-        self.db().set(instances_key(), instances, None)?;
+        self.db().set(instances_key()?, instances, None)?;
         Ok(())
     }
 }
@@ -382,7 +383,10 @@ mod tests {
                 "sh".to_string(),
                 vec![
                     "-c".to_string(),
-                    format!("echo {{ \\\"type\\\": \\\"echo\\\", \\\"data\\\": {{ \\\"result\\\" : \\\"{}\\\" }} }} >output.json", self.content),
+                    format!(
+                        "echo {{ \\\"type\\\": \\\"echo\\\", \\\"data\\\": {{ \\\"result\\\" : \\\"{}\\\" }} }} >output.json",
+                        self.content
+                    ),
                 ],
                 "output.json".to_string(),
                 String::new(),
