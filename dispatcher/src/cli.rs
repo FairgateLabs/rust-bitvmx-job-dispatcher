@@ -18,7 +18,7 @@ use bitvmx_broker::{
 
 use clap::Parser;
 use storage_backend::storage::Storage;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::{
     fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter,
 };
@@ -59,6 +59,10 @@ struct Command {
     // Specify the mode to run the dispatcher, either "local" or "aws"
     #[arg(long, default_value = "local")]
     mode: String,
+
+    /// Path to the broker allow list: a YAML map of pubkey hash to optional IP.
+    #[arg(long)]
+    allow_list: Option<String>,
 }
 
 fn init_trace() -> Result<(), DispatcherError> {
@@ -100,8 +104,17 @@ pub fn init() -> Result<InitContext, DispatcherError> {
 
     let cert = Cert::new_with_privk(&privk)?;
 
-    let allow_list = AllowList::new();
-    allow_list.lock().unwrap().set_allow_all(true);
+    let allow_list = match &args.allow_list {
+        Some(path) => AllowList::from_file(path).map_err(|e| DispatcherError::BrokerError(e.into()))?,
+        None => {
+            warn!("No --allow-list given: accepting jobs from any peer the broker will route. Only run this way on a trusted network.");
+            let list = AllowList::new();
+            list.lock()
+                .map_err(|_| DispatcherError::MutexPoisoned)?
+                .set_allow_all(true);
+            list
+        }
+    };
 
     let config: BrokerConfig = BrokerConfig::new(
         args.port,

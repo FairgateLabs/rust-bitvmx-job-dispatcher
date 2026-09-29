@@ -1,5 +1,6 @@
 use bitvmx_job_dispatcher::{
-    dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
+    dispatcher_error::DispatcherError,
+    dispatcher_message::{DispatcherMessage, JobCommand},
 };
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +21,7 @@ impl GarbledJobType {
 }
 
 impl DispatcherMessage for GarbledJobType {
-    fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
+    fn command(&self) -> Result<JobCommand, DispatcherError> {
         match self {
             GarbledJobType::ImportProof(from_path, to_path) => {
                 std::fs::create_dir_all(to_path)?;
@@ -34,7 +35,7 @@ impl DispatcherMessage for GarbledJobType {
                     to_path.to_string(),
                 ];
 
-                Ok((cmd, args, json, "".to_string()))
+                Ok(JobCommand::new(cmd, args, json, String::new()))
             }
             GarbledJobType::Prove(circuit_path, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
@@ -49,7 +50,7 @@ impl DispatcherMessage for GarbledJobType {
                     "--json".to_string(),
                     json.clone(),
                 ];
-                Ok((cmd, args, json, "".to_string()))
+                Ok(JobCommand::new(cmd, args, json, String::new()))
             }
             GarbledJobType::Verify(proof_blob, circuit_path, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
@@ -83,7 +84,7 @@ impl DispatcherMessage for GarbledJobType {
                     "--json".to_string(),
                     json.clone(),
                 ];
-                Ok((cmd, args, json, "".to_string()))
+                Ok(JobCommand::new(cmd, args, json, String::new()))
             }
             GarbledJobType::Evaluate(circuit_path, commitments, input_labels, output_file_path) => {
                 std::fs::create_dir_all(output_file_path)?;
@@ -111,7 +112,7 @@ impl DispatcherMessage for GarbledJobType {
                     "--json".to_string(),
                     json.clone(),
                 ];
-                Ok((cmd, args, json, "".to_string()))
+                Ok(JobCommand::new(cmd, args, json, String::new()))
             }
         }
     }

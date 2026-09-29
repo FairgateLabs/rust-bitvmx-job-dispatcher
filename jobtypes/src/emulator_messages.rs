@@ -5,7 +5,8 @@ use bitvmx_cpu_definitions::{
     trace::TraceRWStep,
 };
 use bitvmx_job_dispatcher::{
-    dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
+    dispatcher_error::DispatcherError,
+    dispatcher_message::{DispatcherMessage, JobCommand},
 };
 use emulator::{
     decision::{
@@ -24,7 +25,7 @@ const EMULATOR_PATH: &str = "../BitVMX-CPU/target/release/emulator.exe";
 const EMULATOR_PATH: &str = "../BitVMX-CPU/target/release/emulator";
 
 impl DispatcherMessage for EmulatorJobType {
-    fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
+    fn command(&self) -> Result<JobCommand, DispatcherError> {
         let output_path = self.create_output_path()?.unwrap_or_else(|| "".to_string());
         let checkpoint_path = self.checkpoint_input()?.unwrap_or_else(|| "".to_string());
         match self {
@@ -39,11 +40,11 @@ impl DispatcherMessage for EmulatorJobType {
                     "--command-file".to_string(),
                     command_file.clone(),
                 ];
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
-                    "".to_string(),
+                    String::new(),
                 ))
             }
             EmulatorJobType::ProverExecute(yaml, input, _, command_file, fail_config_prover) => {
@@ -68,8 +69,8 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcp.to_string());
                 }
 
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
                     output_path,
@@ -112,8 +113,8 @@ impl DispatcherMessage for EmulatorJobType {
                 args.push("--force".to_string());
                 args.push(force.to_string());
 
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
                     output_path,
@@ -151,8 +152,8 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcp.to_string());
                 }
 
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
                     output_path,
@@ -194,8 +195,8 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(i.to_string());
                 }
 
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
                     output_path,
@@ -227,8 +228,8 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcp.to_string());
                 }
 
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
                     output_path,
@@ -269,8 +270,8 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcv.to_string());
                 }
 
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
                     output_path,
@@ -308,8 +309,8 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcv.to_string());
                 }
 
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
                     output_path,
@@ -339,8 +340,8 @@ impl DispatcherMessage for EmulatorJobType {
                     args.push(fcp.to_string());
                 }
 
-                Ok((
-                    EMULATOR_PATH.to_string(),
+                Ok(JobCommand::new(
+                    EMULATOR_PATH,
                     args,
                     command_file.to_string(),
                     output_path,

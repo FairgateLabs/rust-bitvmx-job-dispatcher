@@ -1,5 +1,6 @@
 use bitvmx_job_dispatcher::{
-    dispatcher_error::DispatcherError, dispatcher_message::DispatcherMessage,
+    dispatcher_error::DispatcherError,
+    dispatcher_message::{DispatcherMessage, JobCommand},
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,29 +29,33 @@ impl DispatcherMessage for ProverJobType {
         }
     }
 
-    fn command(&self) -> Result<(String, Vec<String>, String, String), DispatcherError> {
+    fn command(&self) -> Result<JobCommand, DispatcherError> {
         match self {
             ProverJobType::Prove(_input_value, elf, output_file_path) => {
                 let input_file = format!("{output_file_path}/input.bin");
                 let json = format!("{output_file_path}/output.json");
                 let stark_proof = format!("{output_file_path}/stark_proof.bin");
+
+                // The script is a fixed literal and every path is passed after it as a shell positional parameter, so
+                // the shell binds those values as data and can never parse them as syntax.
                 let cmd = "sh".to_string();
                 let args = vec![
                     "-c".to_string(),
-                    format!(
-                        "../rust-bitvmx-zk-proof/target/release/host prove-stark \
-                        --input {input_file} \
-                        --elf {elf} \
-                        --output {stark_proof} \
-                        --json {json} \
-                        && ../rust-bitvmx-zk-proof/target/release/host \
-                        prove-snark \
-                        --input {stark_proof} \
-                        --json {json} \
-                        --json-input {json}"
-                    ),
+                    concat!(
+                        "../rust-bitvmx-zk-proof/target/release/host prove-stark ",
+                        "--input \"$1\" --elf \"$2\" --output \"$3\" --json \"$4\" && ",
+                        "../rust-bitvmx-zk-proof/target/release/host prove-snark ",
+                        "--input \"$3\" --json \"$4\" --json-input \"$4\""
+                    )
+                    .to_string(),
+                    "bitvmx-prove".to_string(),
+                    input_file,
+                    elf.clone(),
+                    stark_proof,
+                    json.clone(),
                 ];
-                Ok((cmd, args, json, "".to_string()))
+
+                Ok(JobCommand::new(cmd, args, json, String::new()))
             }
         }
     }
