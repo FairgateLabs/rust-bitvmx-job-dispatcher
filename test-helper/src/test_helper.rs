@@ -91,8 +91,7 @@ pub fn config_broker(
     // The broker listening on PORT runs on the services key, so that is the identity to expect there.
     let broker_pubk_hash = Cert::new_with_privk(&fs::read_to_string(&paths.privk).unwrap())
         .unwrap()
-        .get_pubk_hash()
-        .unwrap();
+        .get_pubk_hash();
 
     let channel = match rt {
         Some(rt) => RemoteChannel::new_with_runtime(
@@ -175,7 +174,7 @@ pub fn configure_example_broker(
     let allow_list = AllowList::new();
     allow_list.lock().unwrap().set_allow_all(true);
 
-    let broker_pubk_hash = cert.get_pubk_hash()?;
+    let broker_pubk_hash = cert.get_pubk_hash();
     let channel = RemoteChannel::new(
         &BrokerConfig::new(port, Some(IpAddr::from([127, 0, 0, 1])), None),
         cert,
@@ -187,7 +186,7 @@ pub fn configure_example_broker(
     let privk = fs::read_to_string(paths.job_dispatcher_key.clone())?;
     let cert = Cert::new_with_privk(&privk)?;
     let job_dispatcher_id = Identifier {
-        pubkey_hash: cert.get_pubk_hash()?,
+        pubkey_hash: cert.get_pubk_hash(),
         id: dest_id,
     };
 
