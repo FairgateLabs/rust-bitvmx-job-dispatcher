@@ -33,6 +33,20 @@ ignore = [
     # dependency chain adopts it.
     "RUSTSEC-2023-0071",
 
+    # rustls 0.21.12
+    #
+    # This legacy rustls instance is pulled transitively through the
+    # AWS/Smithy TLS stack and cannot be upgraded independently to 0.23.46.
+    #
+    # TODO: Remove when AWS/Smithy no longer requires hyper-rustls 0.24.x.
+
+    # Unauthenticated ServerHello can downgrade later connections to
+    # classical key exchange.
+    "RUSTSEC-2026-0349",
+
+    # Debug impls for client session values expose TLS secrets.
+    "RUSTSEC-2026-0346",
+
     # rustls-webpki 0.101.7
     #
     # The vulnerable rustls-webpki 0.101.x instance is pulled transitively
