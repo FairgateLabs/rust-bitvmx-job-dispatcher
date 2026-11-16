@@ -36,21 +36,21 @@ impl DispatcherMessage for ProverJobType {
                 let stark_json = format!("{output_file_path}/stark.json");
                 let stark_proof = format!("{output_file_path}/stark_proof.bin");
                 let cmd = "sh".to_string();
-                // The stark runs with `host`, built with GPU support on GPU images. The snark runs with
-                // `host-cpu` when the image has it (the GPU snark prover is not usable yet) and falls back to
-                // `host` otherwise. Each step writes its own json so a failed snark cannot overwrite the
-                // stark result it reads.
+                // `host` is the CPU build and `host-gpu` the cuda build, present only on GPU images.
+                // The stark runs with `host-gpu` when the image has it and with `host` otherwise. The
+                // snark always runs with `host` (the GPU snark prover is not usable yet). Each step
+                // writes its own json so a failed snark cannot overwrite the stark result it reads.
                 let args = vec![
                     "-c".to_string(),
                     format!(
-                        "SNARK=../rust-bitvmx-zk-proof/target/release/host-cpu; \
-                        [ -x \"$SNARK\" ] || SNARK=../rust-bitvmx-zk-proof/target/release/host; \
-                        ../rust-bitvmx-zk-proof/target/release/host prove-stark \
+                        "STARK=../rust-bitvmx-zk-proof/target/release/host-gpu; \
+                        [ -x \"$STARK\" ] || STARK=../rust-bitvmx-zk-proof/target/release/host; \
+                        \"$STARK\" prove-stark \
                         --input {input_file} \
                         --elf {elf} \
                         --output {stark_proof} \
                         --json {stark_json} \
-                        && \"$SNARK\" prove-snark \
+                        && ../rust-bitvmx-zk-proof/target/release/host prove-snark \
                         --input {stark_proof} \
                         --json {json} \
                         --json-input {stark_json}"
@@ -86,13 +86,14 @@ mod tests {
     }
 
     #[test]
-    fn prove_runs_stark_with_host_and_snark_with_cpu_fallback() {
+    fn prove_runs_stark_with_gpu_fallback_and_snark_with_host() {
         let (script, _) = prove_script();
-        assert!(script.contains("host-cpu"));
+        assert!(script.contains("STARK=../rust-bitvmx-zk-proof/target/release/host-gpu;"));
         assert!(script
-            .contains("[ -x \"$SNARK\" ] || SNARK=../rust-bitvmx-zk-proof/target/release/host;"));
-        assert!(script.contains("release/host prove-stark"));
-        assert!(script.contains("&& \"$SNARK\" prove-snark"));
+            .contains("[ -x \"$STARK\" ] || STARK=../rust-bitvmx-zk-proof/target/release/host;"));
+        assert!(script.contains("\"$STARK\" prove-stark"));
+        assert!(script.contains("&& ../rust-bitvmx-zk-proof/target/release/host prove-snark"));
+        assert!(!script.contains("host-cpu"));
         assert!(script.contains("--elf guest.bin"));
     }
 
