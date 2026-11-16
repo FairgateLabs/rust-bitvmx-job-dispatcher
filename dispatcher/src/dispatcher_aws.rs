@@ -360,7 +360,7 @@ mod tests {
     use storage_backend::{storage::Storage, storage_config::StorageConfig};
 
     use super::*;
-    use crate::helper::{get_storage_path, remove_storage_path};
+    use crate::helper::remove_storage_path;
     use test_helper::test_helper::init_trace;
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -398,8 +398,15 @@ mod tests {
         }
     }
 
-    fn init_storage() -> (Rc<DispatcherStorage>, String) {
-        let storage_path = get_storage_path();
+    // Each test has its own storage: the tests run in parallel in one process and the storage is locked by the
+    // first test that opens it.
+    fn init_storage(test_name: &str) -> (Rc<DispatcherStorage>, String) {
+        let storage_path = format!(
+            "temp-runs/storage_aws_{}_{}.db",
+            test_name,
+            std::process::id()
+        );
+        remove_storage_path(&storage_path);
         let storage_config = StorageConfig::new(storage_path.to_string(), None);
         let storage = Rc::new(Storage::new(&storage_config).unwrap());
         let dispatcher_storage = Rc::new(DispatcherStorage::new(storage.clone()));
@@ -407,12 +414,14 @@ mod tests {
         (dispatcher_storage, storage_path)
     }
 
-    fn init_dispatcher() -> (DispatcherAws, String) {
-        let config_path = format!(
-            "{}/../aws-service/config/config.yaml",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let (dispatcher_storage, storage_path) = init_storage();
+    // Placeholder values for the tests that never reach aws.
+    const OFFLINE_CONFIG: &str = "test-data/aws-config.yaml";
+    // The real config, which reads the credentials from AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
+    const AWS_CONFIG: &str = "../aws-helper/config/config.yaml";
+
+    fn init_dispatcher(test_name: &str, config: &str) -> (DispatcherAws, String) {
+        let config_path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), config);
+        let (dispatcher_storage, storage_path) = init_storage(test_name);
 
         (
             DispatcherAws::new(config_path, dispatcher_storage).unwrap(),
@@ -439,7 +448,7 @@ mod tests {
     fn test_dispatcher_aws() {
         init_trace();
 
-        let (dispatcher, storage_path) = init_dispatcher();
+        let (dispatcher, storage_path) = init_dispatcher("test_dispatcher_aws", OFFLINE_CONFIG);
         dispatcher.tick::<EchoMessage>().unwrap();
         drop(dispatcher);
         remove_storage_path(&storage_path);
@@ -448,7 +457,7 @@ mod tests {
     #[test]
     fn test_dispatcher_aws_storage() {
         init_trace();
-        let (storage, storage_path) = init_storage();
+        let (storage, storage_path) = init_storage("test_dispatcher_aws_storage");
         let aws_storage = DispatcherAwsStorage::new(storage);
 
         // same instance is reflected in the list of instances
@@ -484,7 +493,7 @@ mod tests {
     fn test_job_assignment() {
         init_trace();
 
-        let (dispatcher, storage_path) = init_dispatcher();
+        let (dispatcher, storage_path) = init_dispatcher("test_job_assignment", OFFLINE_CONFIG);
         dispatcher
             .storage
             .storage
@@ -517,7 +526,7 @@ mod tests {
     fn test_job_execute() {
         init_trace();
 
-        let (dispatcher, storage_path) = init_dispatcher();
+        let (dispatcher, storage_path) = init_dispatcher("test_job_execute", AWS_CONFIG);
         dispatcher
             .storage
             .storage
