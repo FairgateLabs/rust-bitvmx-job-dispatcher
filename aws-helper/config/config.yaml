@@ -1,16 +1,25 @@
 aws:
-  region: us-east-2
+  region: us-east-1
   access_key_id: (env:AWS_ACCESS_KEY_ID)
   secret_access_key: (env:AWS_SECRET_ACCESS_KEY)
 
 ec2:
-  image_id: "ami-0a260d1172ddb23d1"
+  # GPU image (T4, g4dn): stark on `host-gpu` (built with cuda), snark on `host` (cpu).
+  # The check fork guest is at /home/ubuntu/rust-bitvmx-zk-proof/guests/check-fork-guest.bin.
+  image_id: "ami-0a6872c96575d5907"
   instance_profile_arn: "arn:aws:iam::280362093965:instance-profile/ZKP"
-  max_running_instances: 3
-  instance_type: "t3.xlarge"
+  # The GPU quota is 8 vCPU and each g4dn.xlarge uses 4.
+  max_running_instances: 2
+  instance_type: "g4dn.xlarge"
 
 s3:
   bucket: "job-dispatcher-testing"
+  # The bucket is not in aws.region.
+  region: "us-east-2"
+
+ssm:
+  # A 100 block snark takes about an hour on cpu, the default SSM timeout is 1 hour.
+  execution_timeout_secs: 7200
 
 paths:
   repository_path: "/home/ubuntu/rust-bitvmx-zk-proof"
