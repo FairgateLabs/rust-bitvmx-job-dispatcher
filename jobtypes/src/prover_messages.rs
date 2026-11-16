@@ -33,21 +33,27 @@ impl DispatcherMessage for ProverJobType {
             ProverJobType::Prove(_input_value, elf, output_file_path) => {
                 let input_file = format!("{output_file_path}/input.bin");
                 let json = format!("{output_file_path}/output.json");
+                let stark_json = format!("{output_file_path}/stark.json");
                 let stark_proof = format!("{output_file_path}/stark_proof.bin");
                 let cmd = "sh".to_string();
+                // The stark runs with `host`, built with GPU support on GPU images. The snark runs with
+                // `host-cpu` when the image has it (the GPU snark prover is not usable yet) and falls back to
+                // `host` otherwise. Each step writes its own json so a failed snark cannot overwrite the
+                // stark result it reads.
                 let args = vec![
                     "-c".to_string(),
                     format!(
-                        "../rust-bitvmx-zk-proof/target/release/host prove-stark \
+                        "SNARK=../rust-bitvmx-zk-proof/target/release/host-cpu; \
+                        [ -x \"$SNARK\" ] || SNARK=../rust-bitvmx-zk-proof/target/release/host; \
+                        ../rust-bitvmx-zk-proof/target/release/host prove-stark \
                         --input {input_file} \
                         --elf {elf} \
                         --output {stark_proof} \
-                        --json {json} \
-                        && ../rust-bitvmx-zk-proof/target/release/host \
-                        prove-snark \
+                        --json {stark_json} \
+                        && \"$SNARK\" prove-snark \
                         --input {stark_proof} \
                         --json {json} \
-                        --json-input {json}"
+                        --json-input {stark_json}"
                     ),
                 ];
                 Ok((cmd, args, json, "".to_string()))
@@ -65,4 +71,36 @@ impl DispatcherMessage for ProverJobType {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProverJobType {
     Prove(Vec<u8>, String, String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn prove_script() -> (String, String) {
+        let job = ProverJobType::Prove(vec![0; 4], "guest.bin".to_string(), "out".to_string());
+        let (cmd, args, result_file, _) = job.command().unwrap();
+        assert_eq!(cmd, "sh");
+        assert_eq!(args[0], "-c");
+        (args[1].clone(), result_file)
+    }
+
+    #[test]
+    fn prove_runs_stark_with_host_and_snark_with_cpu_fallback() {
+        let (script, _) = prove_script();
+        assert!(script.contains("host-cpu"));
+        assert!(script
+            .contains("[ -x \"$SNARK\" ] || SNARK=../rust-bitvmx-zk-proof/target/release/host;"));
+        assert!(script.contains("release/host prove-stark"));
+        assert!(script.contains("&& \"$SNARK\" prove-snark"));
+        assert!(script.contains("--elf guest.bin"));
+    }
+
+    #[test]
+    fn prove_snark_never_reads_and_writes_the_same_json() {
+        let (script, result_file) = prove_script();
+        assert_eq!(result_file, "out/output.json");
+        assert!(script.contains("--json out/stark.json"));
+        assert!(script.contains("--json out/output.json --json-input out/stark.json"));
+    }
 }

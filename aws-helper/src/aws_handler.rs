@@ -48,18 +48,30 @@ impl AwsHandler {
 
         let runtime = tokio::runtime::Runtime::new()?;
 
-        let aws_config = runtime.block_on(async {
-            aws_config::defaults(BehaviorVersion::latest())
-                .region(Region::new(config.aws.region.clone()))
-                .credentials_provider(creds)
-                .load()
-                .await
-        });
+        let load_config = |region: String, creds: Credentials| {
+            runtime.block_on(async {
+                aws_config::defaults(BehaviorVersion::latest())
+                    .region(Region::new(region))
+                    .credentials_provider(creds)
+                    .load()
+                    .await
+            })
+        };
+
+        let aws_config = load_config(config.aws.region.clone(), creds.clone());
+        let s3_config = load_config(
+            config
+                .s3
+                .region
+                .clone()
+                .unwrap_or_else(|| config.aws.region.clone()),
+            creds,
+        );
 
         let (ec2_client, ssm_client, s3_client) = (
             Ec2Client::new(&aws_config),
             SsmClient::new(&aws_config),
-            S3Client::new(&aws_config),
+            S3Client::new(&s3_config),
         );
 
         Ok(Self {
@@ -188,16 +200,20 @@ impl AwsHandler {
         instance_id: &str,
         command: Vec<String>,
     ) -> Result<String, AwsDispatcherError> {
+        let mut request = self
+            .ssm_client
+            .send_command()
+            .instance_ids(instance_id)
+            .document_name("AWS-RunShellScript")
+            .parameters("commands", command);
+
+        if let Some(timeout) = self.config.ssm.execution_timeout_secs {
+            request = request.parameters("executionTimeout", vec![timeout.to_string()]);
+        }
+
         let command = self
             .runtime
-            .block_on(
-                self.ssm_client
-                    .send_command()
-                    .instance_ids(instance_id)
-                    .document_name("AWS-RunShellScript")
-                    .parameters("commands", command)
-                    .send(),
-            )
+            .block_on(request.send())
             .map_err(|e| AwsDispatcherError::SsmError(e.into()))?;
 
         let command_id = command
@@ -381,6 +397,14 @@ impl AwsHandler {
 
     pub fn bucket_name(&self) -> &str {
         &self.config.s3.bucket
+    }
+
+    pub fn bucket_region(&self) -> &str {
+        self.config
+            .s3
+            .region
+            .as_deref()
+            .unwrap_or(&self.config.aws.region)
     }
 
     pub fn running_path(&self) -> &str {
