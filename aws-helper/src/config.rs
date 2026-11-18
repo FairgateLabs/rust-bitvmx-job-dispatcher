@@ -26,6 +26,13 @@ pub struct Ec2Config {
     pub instance_profile_arn: String,
     pub instance_type: String,
     pub max_running_instances: usize,
+    #[serde(default = "default_instance_ready_timeout_secs")]
+    pub instance_ready_timeout_secs: u64,
+}
+
+/// Instances take 3 to 4 minutes to be ready.
+fn default_instance_ready_timeout_secs() -> u64 {
+    360
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -63,9 +70,13 @@ mod tests {
     use super::*;
 
     fn yaml(ssm_section: &str) -> String {
+        yaml_with_ec2("", ssm_section)
+    }
+
+    fn yaml_with_ec2(ec2_extra: &str, ssm_section: &str) -> String {
         format!(
             "aws:\n  region: us-east-1\n  access_key_id: key\n  secret_access_key: secret\n\
-             ec2:\n  image_id: ami-1\n  instance_profile_arn: arn\n  max_running_instances: 2\n  instance_type: t3.xlarge\n\
+             ec2:\n  image_id: ami-1\n  instance_profile_arn: arn\n  max_running_instances: 2\n  instance_type: t3.xlarge\n{ec2_extra}\
              s3:\n  bucket: bucket\n\
              paths:\n  repository_path: /repo\n{ssm_section}"
         )
@@ -83,8 +94,8 @@ mod tests {
     }
 
     #[test]
-    fn config_without_ssm_section_still_loads() {
-        let config = load("legacy", yaml(""));
+    fn config_without_ssm_section_loads() {
+        let config = load("no-ssm", yaml(""));
         assert_eq!(config.ssm.execution_timeout_secs, None);
     }
 
@@ -92,5 +103,20 @@ mod tests {
     fn config_reads_ssm_timeout() {
         let config = load("full", yaml("ssm:\n  execution_timeout_secs: 7200\n"));
         assert_eq!(config.ssm.execution_timeout_secs, Some(7200));
+    }
+
+    #[test]
+    fn instance_ready_timeout_defaults_to_six_minutes() {
+        let config = load("ready-default", yaml(""));
+        assert_eq!(config.ec2.instance_ready_timeout_secs, 360);
+    }
+
+    #[test]
+    fn config_reads_instance_ready_timeout() {
+        let config = load(
+            "ready-custom",
+            yaml_with_ec2("  instance_ready_timeout_secs: 120\n", ""),
+        );
+        assert_eq!(config.ec2.instance_ready_timeout_secs, 120);
     }
 }

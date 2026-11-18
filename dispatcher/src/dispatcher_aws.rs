@@ -150,10 +150,59 @@ impl DispatcherAws {
 
                 self.storage
                     .save_instance(&instance.instance_id.clone(), &instance)?;
+            } else {
+                self.fail_if_not_ready_in_time::<T>(&mut instance)?;
             }
         }
 
         Ok(false)
+    }
+
+    /// Terminates an instance that did not become ready within `instance_ready_timeout_secs` and fails its job,
+    /// so an instance that never starts does not keep running, and its job does not wait, forever.
+    fn fail_if_not_ready_in_time<T>(
+        &self,
+        instance: &mut InstanceInfo,
+    ) -> Result<(), DispatcherError>
+    where
+        T: DispatcherMessage + DeserializeOwned,
+    {
+        let now = now_secs();
+        let Some(launched_at) = instance.launched_at else {
+            // Without a launch time the wait is counted from now.
+            instance.launched_at = Some(now);
+            return self
+                .storage
+                .save_instance(&instance.instance_id.clone(), instance);
+        };
+
+        let timeout = self.handler.instance_ready_timeout_secs();
+        if !ready_timed_out(launched_at, now, timeout) {
+            return Ok(());
+        }
+
+        let reason = format!(
+            "Instance {} was not ready after {} seconds",
+            instance.instance_id, timeout
+        );
+        error!("Job {} failed: {}", instance.job_id, reason);
+
+        // The job fails even if the instance cannot be terminated (for example, because it was never created).
+        if let Err(e) = self.handler.terminate_instance(&instance.instance_id) {
+            error!(
+                "Could not terminate instance {}: {}",
+                instance.instance_id, e
+            );
+        }
+
+        let rm = ResultMessage::new(instance.job_id.clone(), reason, true);
+        let (_job, id) = self.get_job::<T>(&instance.job_id)?;
+        self.storage
+            .storage
+            .complete_job(&instance.job_id, (rm.to_string()?, id))?;
+        self.storage.remove_instance(&instance.instance_id)?;
+
+        Ok(())
     }
 
     fn complete_jobs<T>(&self) -> Result<bool, DispatcherError>
@@ -287,6 +336,9 @@ pub struct InstanceInfo {
     status: InstanceStatus,
     job_id: String,
     command_id: Option<String>,
+    /// Unix time in seconds when the instance was launched, `None` when it is not known.
+    #[serde(default)]
+    launched_at: Option<u64>,
 }
 
 impl InstanceInfo {
@@ -296,8 +348,20 @@ impl InstanceInfo {
             status,
             job_id,
             command_id: None,
+            launched_at: Some(now_secs()),
         }
     }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn ready_timed_out(launched_at: u64, now: u64, timeout_secs: u64) -> bool {
+    now.saturating_sub(launched_at) >= timeout_secs
 }
 
 impl DispatcherAwsStorage {
@@ -540,5 +604,29 @@ mod tests {
 
         drop(dispatcher);
         remove_storage_path(&storage_path);
+    }
+
+    #[test]
+    fn ready_timeout_is_reached_at_the_limit() {
+        assert!(!ready_timed_out(1000, 1000, 360));
+        assert!(!ready_timed_out(1000, 1359, 360));
+        assert!(ready_timed_out(1000, 1360, 360));
+        assert!(ready_timed_out(1000, 5000, 360));
+        // A clock that goes back never times out.
+        assert!(!ready_timed_out(1000, 900, 360));
+    }
+
+    #[test]
+    fn new_instances_record_the_launch_time() {
+        let before = now_secs();
+        let info = InstanceInfo::new("i-1".to_string(), InstanceStatus::Init, "job".to_string());
+        assert!(info.launched_at.unwrap() >= before);
+    }
+
+    #[test]
+    fn instances_without_launch_time_load() {
+        let saved = r#"{"instance_id":"i-1","status":"Init","job_id":"job","command_id":null}"#;
+        let info: InstanceInfo = serde_json::from_str(saved).unwrap();
+        assert_eq!(info.launched_at, None);
     }
 }

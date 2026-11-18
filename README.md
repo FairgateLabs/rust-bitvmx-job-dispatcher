@@ -63,5 +63,8 @@ An image for a T4 GPU (g4dn) needs, on top of the setup above:
   looking for `stark_verify_final.pk.dmp`, `stark_verify.cs` and `stark_verify` under `/var/lib/containerd`.
 
 Optional settings in `aws-helper/config/config.yaml`:
+- `ec2.instance_ready_timeout_secs`: how long a launched instance has to become ready (running and with its status
+  checks ok). After that the dispatcher terminates it and fails the job. Default 360; instances usually take 3 to 4
+  minutes.
 - `ssm.execution_timeout_secs`: SSM `executionTimeout` for each job command. When unset SSM applies its default of
   1 hour, which is shorter than the snark of a large input on cpu.

@@ -1,6 +1,7 @@
 use aws_config::{BehaviorVersion, Region};
 use aws_sdk_ec2::{
     Client as Ec2Client,
+    error::ProvideErrorMetadata,
     types::{
         IamInstanceProfileSpecification, InstanceStateName, InstanceType, ResourceType,
         SummaryStatus, Tag, TagSpecification,
@@ -272,15 +273,21 @@ impl AwsHandler {
         &self,
         instance_id: &str,
     ) -> Result<Option<CompleteStatus>, AwsDispatcherError> {
-        let describe_response = self
-            .runtime
-            .block_on(
-                self.ec2_client
-                    .describe_instance_status()
-                    .instance_ids(instance_id)
-                    .send(),
-            )
-            .map_err(|e| AwsDispatcherError::Ec2Error(e.into()))?;
+        let describe_response = match self.runtime.block_on(
+            self.ec2_client
+                .describe_instance_status()
+                .instance_ids(instance_id)
+                .send(),
+        ) {
+            Ok(response) => response,
+            // Right after it is launched, EC2 can answer for a few seconds that the instance does not exist.
+            // It is reported as not ready yet, so the next check asks again.
+            Err(e) if e.code() == Some("InvalidInstanceID.NotFound") => {
+                info!("Instance {} is not visible yet", instance_id);
+                return Ok(None);
+            }
+            Err(e) => return Err(AwsDispatcherError::Ec2Error(e.into())),
+        };
 
         if describe_response
             .instance_statuses
@@ -381,6 +388,10 @@ impl AwsHandler {
 
     pub fn get_max_running_instances(&self) -> usize {
         self.config.ec2.max_running_instances
+    }
+
+    pub fn instance_ready_timeout_secs(&self) -> u64 {
+        self.config.ec2.instance_ready_timeout_secs
     }
 
     pub fn bucket_name(&self) -> &str {
