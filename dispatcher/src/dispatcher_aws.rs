@@ -116,11 +116,10 @@ impl DispatcherAws {
                     self.handler.upload_file(&remote_key, data)?;
 
                     full_command.push(format!(
-                        "aws s3 cp s3://{}/{} {} --region {}",
+                        "aws s3 cp s3://{}/{} {}",
                         self.handler.bucket_name(),
                         remote_key,
-                        fname,
-                        self.handler.bucket_region()
+                        fname
                     ));
                 }
 
@@ -130,12 +129,11 @@ impl DispatcherAws {
 
                 // Upload result to s3 after execution
                 full_command.push(format!(
-                    "aws s3 cp {} s3://{}/{}/{} --region {}",
+                    "aws s3 cp {} s3://{}/{}/{}",
                     command.2,
                     self.handler.bucket_name(),
                     instance.job_id,
                     command.2,
-                    self.handler.bucket_region(),
                 ));
 
                 let command_id = self

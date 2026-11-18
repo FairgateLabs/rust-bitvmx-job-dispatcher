@@ -13,9 +13,7 @@ ec2:
   instance_type: "g4dn.xlarge"
 
 s3:
-  bucket: "job-dispatcher-testing"
-  # The bucket is not in aws.region.
-  region: "us-east-2"
+  bucket: "job-dispatcher-bucket"
 
 ssm:
   # A 100 block snark takes about an hour on cpu, the default SSM timeout is 1 hour.

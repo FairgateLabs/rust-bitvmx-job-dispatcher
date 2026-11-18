@@ -58,7 +58,5 @@ An image for a T4 GPU (g4dn) needs, on top of the setup above:
 - The guest `.bin` in a fixed path, because the job only uploads its input and `elf` is a path inside the instance.
 
 Optional settings in `aws-helper/config/config.yaml`:
-- `s3.region`: region of the bucket when it is not `aws.region`. It is also passed to the `aws s3 cp` commands that run
-  on the instance.
 - `ssm.execution_timeout_secs`: SSM `executionTimeout` for each job command. When unset SSM applies its default of
   1 hour, which is shorter than the snark of a large input on cpu.
