@@ -1,0 +1,18 @@
+# Config for the unit tests of the aws dispatcher. The tests never reach aws, so the values are placeholders and
+# the credentials are not read from the environment.
+aws:
+  region: us-east-1
+  access_key_id: test
+  secret_access_key: test
+
+ec2:
+  image_id: "ami-00000000000000000"
+  instance_profile_arn: "arn:aws:iam::000000000000:instance-profile/test"
+  max_running_instances: 2
+  instance_type: "t3.micro"
+
+s3:
+  bucket: "test-bucket"
+
+paths:
+  repository_path: "/home/ubuntu/rust-bitvmx-zk-proof"
