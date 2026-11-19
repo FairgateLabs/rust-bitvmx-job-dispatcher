@@ -51,13 +51,17 @@ prefetch_groth16_files() {
 }
 
 # `host` is the CPU build. `host-gpu` is the cuda build, present only on GPU images, and much faster for the
-# stark. The snark always runs with `host`: the cuda groth16 prover crashes.
-STARK_BIN=$BIN/host-gpu
-[ -x "$STARK_BIN" ] || STARK_BIN=$BIN/host
+# stark. It is used only when a GPU answers: the GPU image can run on an instance type without a GPU, or with a
+# driver that did not load. The snark always runs with `host`: the cuda groth16 prover crashes.
+STARK_BIN=$BIN/host
+if [ -x "$BIN/host-gpu" ] && nvidia-smi -L >/dev/null 2>&1; then
+    STARK_BIN=$BIN/host-gpu
+fi
 SNARK_BIN=$BIN/host
+echo "stark with $STARK_BIN, snark with $SNARK_BIN"
 
 # A failed prefetch only makes the snark slower.
-prefetch_groth16_files || true
+prefetch_groth16_files
 
 # Each step writes its own json: prove-snark overwrites the json it writes, so a failed snark must not be able
 # to overwrite the stark result it reads.
@@ -65,8 +69,9 @@ prefetch_groth16_files || true
     --input "$INPUT" \
     --elf "$ELF" \
     --output "$OUT/stark_proof.bin" \
-    --json "$OUT/stark.json" &&
-    "$SNARK_BIN" prove-snark \
-        --input "$OUT/stark_proof.bin" \
-        --json "$OUT/output.json" \
-        --json-input "$OUT/stark.json"
+    --json "$OUT/stark.json" || exit
+
+"$SNARK_BIN" prove-snark \
+    --input "$OUT/stark_proof.bin" \
+    --json "$OUT/output.json" \
+    --json-input "$OUT/stark.json"

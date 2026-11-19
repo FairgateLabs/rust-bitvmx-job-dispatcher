@@ -46,7 +46,7 @@ Also, rust-bitvmx-zk-proof has their own scripts to help install RiscZero and th
 ### GPU image
 
 The prove job runs `jobtypes/scripts/prove.sh`, which is uploaded with the input of each job. It runs the stark with
-`host-gpu` when the image has it, otherwise with `host`, and the snark always with `host`. This lets one image use a build with cuda for the stark (about 150 times faster than cpu) while the snark keeps
+`host-gpu` when the image has it and `nvidia-smi` finds a GPU, otherwise with `host`, and the snark always with `host`. This lets one image use a build with cuda for the stark (about 150 times faster than cpu) while the snark keeps
 running on cpu: the cuda groth16 prover crashes with `an illegal memory access was encountered`.
 
 An image for a T4 GPU (g4dn) needs, on top of the setup above:
@@ -59,7 +59,7 @@ An image for a T4 GPU (g4dn) needs, on top of the setup above:
   the instance.
 - The docker image of the groth16 prover (`risczero/risc0-groth16-prover`) loaded in containerd. A volume restored from the
   AMI snapshot reads each block from S3 the first time, at about 5 MB/s per read stream, so the first snark of an instance
-  waits about 8 minutes for the proving key. `prove.sh` reads those files in parallel before starting (about 80 seconds) by
+  waits about 8 minutes for the proving key. `prove.sh` reads those files in parallel before the stark (about 80 seconds) by
   looking for `stark_verify_final.pk.dmp`, `stark_verify.cs` and `stark_verify` under `/var/lib/containerd`.
 
 Optional settings in `aws-helper/config/config.yaml`:
