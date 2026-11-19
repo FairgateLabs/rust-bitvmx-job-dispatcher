@@ -181,19 +181,21 @@ impl DispatcherAws {
             return Ok(());
         }
 
+        // The instance stays saved until it is terminated, so a failed terminate is tried again on the next check
+        // instead of leaving the instance running without anyone tracking it.
+        if let Err(e) = self.handler.terminate_instance(&instance.instance_id) {
+            error!(
+                "Could not terminate instance {}, trying again on the next check: {}",
+                instance.instance_id, e
+            );
+            return Ok(());
+        }
+
         let reason = format!(
             "Instance {} was not ready after {} seconds",
             instance.instance_id, timeout
         );
         error!("Job {} failed: {}", instance.job_id, reason);
-
-        // The job fails even if the instance cannot be terminated (for example, because it was never created).
-        if let Err(e) = self.handler.terminate_instance(&instance.instance_id) {
-            error!(
-                "Could not terminate instance {}: {}",
-                instance.instance_id, e
-            );
-        }
 
         let rm = ResultMessage::new(instance.job_id.clone(), reason, true);
         let (_job, id) = self.get_job::<T>(&instance.job_id)?;
