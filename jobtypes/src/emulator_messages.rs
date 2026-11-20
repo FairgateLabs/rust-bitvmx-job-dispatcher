@@ -158,6 +158,61 @@ impl DispatcherMessage for EmulatorJobType {
                     output_path,
                 ))
             }
+            EmulatorJobType::FullDuplexStage(
+                pdf,
+                _,
+                is_prover,
+                stage,
+                counterparty_hashes,
+                counterparty_decision,
+                final_trace,
+                command_file,
+                fail_config,
+            ) => {
+                let mut args = vec![
+                    "full-duplex-stage".to_string(),
+                    "--pdf".to_string(),
+                    pdf.clone(),
+                    "--checkpoint-input-path".to_string(),
+                    checkpoint_path.clone(),
+                    "--checkpoint-output-path".to_string(),
+                    output_path.clone(),
+                    "--stage".to_string(),
+                    stage.to_string(),
+                    "--command-file".to_string(),
+                    command_file.clone(),
+                ];
+
+                if *is_prover {
+                    args.push("--is-prover".to_string());
+                }
+
+                if !counterparty_hashes.is_empty() {
+                    args.push("--counterparty-hashes".to_string());
+                    args.extend(counterparty_hashes.iter().cloned());
+                }
+
+                if let Some(decision) = counterparty_decision {
+                    args.push("--counterparty-decision".to_string());
+                    args.push(decision.to_string());
+                }
+
+                if *final_trace {
+                    args.push("--final-trace".to_string());
+                }
+
+                if let Some(fc) = fail_config {
+                    args.push("--fail-config".to_string());
+                    args.push(fc.to_string());
+                }
+
+                Ok((
+                    EMULATOR_PATH.to_string(),
+                    args,
+                    command_file.to_string(),
+                    output_path,
+                ))
+            }
             EmulatorJobType::VerifierChooseSegment(
                 pdf,
                 _,
@@ -362,6 +417,15 @@ impl DispatcherMessage for EmulatorJobType {
             EmulatorJobType::VerifierChooseSegment(_, _, _, _, _, _, _) => {
                 "VerifierChooseSegmentResult"
             }
+            // The trailing stage also produces the trace for the disputed
+            // step, so it answers with the final-trace result.
+            EmulatorJobType::FullDuplexStage(_, _, _, _, _, _, final_trace, _, _) => {
+                if *final_trace {
+                    "FullDuplexFinalTraceResult"
+                } else {
+                    "FullDuplexStageResult"
+                }
+            }
             EmulatorJobType::ProverFinalTrace(_, _, _, _, _) => "ProverFinalTraceResult",
             EmulatorJobType::VerifierChooseChallenge(_, _, _, _, _, _, _, _) => {
                 "VerifierChooseChallengeResult"
@@ -414,6 +478,21 @@ pub enum EmulatorJobType {
         Option<FailConfiguration>,
         NArySearchType,
     ), // pdf, checkpoint_verifier_path, round_number, hashes, command_file, fail_config_verifier, nary_search_type
+    /// One stage of a full-duplex search, which selects over the counterparty's
+    /// previous dissection and dissects the subinterval it just selected. Both
+    /// parties run the same job; `is_prover` only picks which checkpoint log
+    /// the emulator loads.
+    FullDuplexStage(
+        String,
+        String,
+        bool,
+        u8,
+        Vec<String>,
+        Option<u32>,
+        bool,
+        String,
+        Option<FailConfiguration>,
+    ), // pdf, checkpoint_path, is_prover, stage, counterparty_hashes, counterparty_decision, final_trace, command_file, fail_config
     ProverFinalTrace(String, String, u32, String, Option<FailConfiguration>), // pdf, checkpoint_prover_path, v_decision, command_file, fail_config_prover
     VerifierChooseChallenge(
         String,
@@ -462,6 +541,9 @@ impl EmulatorJobType {
                 Ok(Some(base.clone()))
             }
             EmulatorJobType::VerifierChooseSegment(_, base, _, _, _, _, _) => {
+                Ok(Some(base.clone()))
+            }
+            EmulatorJobType::FullDuplexStage(_, base, _, _, _, _, _, _, _) => {
                 Ok(Some(base.clone()))
             }
             EmulatorJobType::ProverFinalTrace(_, base, _, _, _) => Ok(Some(base.clone())),
