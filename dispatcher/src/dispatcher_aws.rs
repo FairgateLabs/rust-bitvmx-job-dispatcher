@@ -150,10 +150,61 @@ impl DispatcherAws {
 
                 self.storage
                     .save_instance(&instance.instance_id.clone(), &instance)?;
+            } else {
+                self.fail_if_not_ready_in_time::<T>(&mut instance)?;
             }
         }
 
         Ok(false)
+    }
+
+    /// Terminates an instance that did not become ready within `instance_ready_timeout_secs` and fails its job,
+    /// so an instance that never starts does not keep running, and its job does not wait, forever.
+    fn fail_if_not_ready_in_time<T>(
+        &self,
+        instance: &mut InstanceInfo,
+    ) -> Result<(), DispatcherError>
+    where
+        T: DispatcherMessage + DeserializeOwned,
+    {
+        let now = now_secs();
+        let Some(launched_at) = instance.launched_at else {
+            // Without a launch time the wait is counted from now.
+            instance.launched_at = Some(now);
+            return self
+                .storage
+                .save_instance(&instance.instance_id.clone(), instance);
+        };
+
+        let timeout = self.handler.instance_ready_timeout_secs();
+        if !ready_timed_out(launched_at, now, timeout) {
+            return Ok(());
+        }
+
+        // The instance stays saved until it is terminated, so a failed terminate is tried again on the next check
+        // instead of leaving the instance running without anyone tracking it.
+        if let Err(e) = self.handler.terminate_instance(&instance.instance_id) {
+            error!(
+                "Could not terminate instance {}, trying again on the next check: {}",
+                instance.instance_id, e
+            );
+            return Ok(());
+        }
+
+        let reason = format!(
+            "Instance {} was not ready after {} seconds",
+            instance.instance_id, timeout
+        );
+        error!("Job {} failed: {}", instance.job_id, reason);
+
+        let rm = ResultMessage::new(instance.job_id.clone(), reason, true);
+        let (_job, id) = self.get_job::<T>(&instance.job_id)?;
+        self.storage
+            .storage
+            .complete_job(&instance.job_id, (rm.to_string()?, id))?;
+        self.storage.remove_instance(&instance.instance_id)?;
+
+        Ok(())
     }
 
     fn complete_jobs<T>(&self) -> Result<bool, DispatcherError>
@@ -287,6 +338,9 @@ pub struct InstanceInfo {
     status: InstanceStatus,
     job_id: String,
     command_id: Option<String>,
+    /// Unix time in seconds when the instance was launched, `None` when it is not known.
+    #[serde(default)]
+    launched_at: Option<u64>,
 }
 
 impl InstanceInfo {
@@ -296,8 +350,20 @@ impl InstanceInfo {
             status,
             job_id,
             command_id: None,
+            launched_at: Some(now_secs()),
         }
     }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn ready_timed_out(launched_at: u64, now: u64, timeout_secs: u64) -> bool {
+    now.saturating_sub(launched_at) >= timeout_secs
 }
 
 impl DispatcherAwsStorage {
@@ -360,7 +426,7 @@ mod tests {
     use storage_backend::{storage::Storage, storage_config::StorageConfig};
 
     use super::*;
-    use crate::helper::{get_storage_path, remove_storage_path};
+    use crate::helper::remove_storage_path;
     use test_helper::test_helper::init_trace;
 
     #[derive(Debug, Serialize, Deserialize)]
@@ -398,8 +464,15 @@ mod tests {
         }
     }
 
-    fn init_storage() -> (Rc<DispatcherStorage>, String) {
-        let storage_path = get_storage_path();
+    // Each test has its own storage: the tests run in parallel in one process and the storage is locked by the
+    // first test that opens it.
+    fn init_storage(test_name: &str) -> (Rc<DispatcherStorage>, String) {
+        let storage_path = format!(
+            "temp-runs/storage_aws_{}_{}.db",
+            test_name,
+            std::process::id()
+        );
+        remove_storage_path(&storage_path);
         let storage_config = StorageConfig::new(storage_path.to_string(), None);
         let storage = Rc::new(Storage::new(&storage_config).unwrap());
         let dispatcher_storage = Rc::new(DispatcherStorage::new(storage.clone()));
@@ -407,12 +480,14 @@ mod tests {
         (dispatcher_storage, storage_path)
     }
 
-    fn init_dispatcher() -> (DispatcherAws, String) {
-        let config_path = format!(
-            "{}/../aws-service/config/config.yaml",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let (dispatcher_storage, storage_path) = init_storage();
+    // Placeholder values for the tests that never reach aws.
+    const OFFLINE_CONFIG: &str = "test-data/aws-config.yaml";
+    // The real config, which reads the credentials from AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY.
+    const AWS_CONFIG: &str = "../aws-helper/config/config.yaml";
+
+    fn init_dispatcher(test_name: &str, config: &str) -> (DispatcherAws, String) {
+        let config_path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), config);
+        let (dispatcher_storage, storage_path) = init_storage(test_name);
 
         (
             DispatcherAws::new(config_path, dispatcher_storage).unwrap(),
@@ -439,7 +514,7 @@ mod tests {
     fn test_dispatcher_aws() {
         init_trace();
 
-        let (dispatcher, storage_path) = init_dispatcher();
+        let (dispatcher, storage_path) = init_dispatcher("test_dispatcher_aws", OFFLINE_CONFIG);
         dispatcher.tick::<EchoMessage>().unwrap();
         drop(dispatcher);
         remove_storage_path(&storage_path);
@@ -448,7 +523,7 @@ mod tests {
     #[test]
     fn test_dispatcher_aws_storage() {
         init_trace();
-        let (storage, storage_path) = init_storage();
+        let (storage, storage_path) = init_storage("test_dispatcher_aws_storage");
         let aws_storage = DispatcherAwsStorage::new(storage);
 
         // same instance is reflected in the list of instances
@@ -484,7 +559,7 @@ mod tests {
     fn test_job_assignment() {
         init_trace();
 
-        let (dispatcher, storage_path) = init_dispatcher();
+        let (dispatcher, storage_path) = init_dispatcher("test_job_assignment", OFFLINE_CONFIG);
         dispatcher
             .storage
             .storage
@@ -517,7 +592,7 @@ mod tests {
     fn test_job_execute() {
         init_trace();
 
-        let (dispatcher, storage_path) = init_dispatcher();
+        let (dispatcher, storage_path) = init_dispatcher("test_job_execute", AWS_CONFIG);
         dispatcher
             .storage
             .storage
@@ -531,5 +606,29 @@ mod tests {
 
         drop(dispatcher);
         remove_storage_path(&storage_path);
+    }
+
+    #[test]
+    fn ready_timeout_is_reached_at_the_limit() {
+        assert!(!ready_timed_out(1000, 1000, 360));
+        assert!(!ready_timed_out(1000, 1359, 360));
+        assert!(ready_timed_out(1000, 1360, 360));
+        assert!(ready_timed_out(1000, 5000, 360));
+        // A clock that goes back never times out.
+        assert!(!ready_timed_out(1000, 900, 360));
+    }
+
+    #[test]
+    fn new_instances_record_the_launch_time() {
+        let before = now_secs();
+        let info = InstanceInfo::new("i-1".to_string(), InstanceStatus::Init, "job".to_string());
+        assert!(info.launched_at.unwrap() >= before);
+    }
+
+    #[test]
+    fn instances_without_launch_time_load() {
+        let saved = r#"{"instance_id":"i-1","status":"Init","job_id":"job","command_id":null}"#;
+        let info: InstanceInfo = serde_json::from_str(saved).unwrap();
+        assert_eq!(info.launched_at, None);
     }
 }
