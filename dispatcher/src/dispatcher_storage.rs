@@ -3,7 +3,7 @@ use std::rc::Rc;
 use bitvmx_broker::identification::identifier::Identifier;
 use storage_backend::{
     key::StorageKey,
-    storage::{KeyValueStore, Storage},
+    storage::Storage,
 };
 
 use crate::dispatcher_error::DispatcherError;
